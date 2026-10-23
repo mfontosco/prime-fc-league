@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PRIME FC Mini League</title>
+  <meta name="description" content="PRIME FC Mini 4-a-side League 2026 — fixtures, results and live table.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="hero">
+    <div class="wrap">
+      <p class="eyebrow">PRIME FC · 2026 Season</p>
+      <h1>Mini 4-a-side League</h1>
+      <p class="tagline">One League. Three Teams. One Champion!</p>
+      <p class="dates">Sat 31 Oct – Sat 19 Dec 2026 · League format · No final</p>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section id="status" class="status" aria-live="polite"></section>
+
+    <section class="card">
+      <h2>League Table</h2>
+      <div class="table-scroll">
+        <table class="standings">
+          <thead>
+            <tr>
+              <th scope="col" class="pos">#</th>
+              <th scope="col" class="team">Team</th>
+              <th scope="col" title="Played">P</th>
+              <th scope="col" title="Won">W</th>
+              <th scope="col" title="Drawn">D</th>
+              <th scope="col" title="Lost">L</th>
+              <th scope="col" class="hide-sm" title="Goals for">GF</th>
+              <th scope="col" class="hide-sm" title="Goals against">GA</th>
+              <th scope="col" title="Goal difference">GD</th>
+              <th scope="col" class="pts" title="Points">Pts</th>
+            </tr>
+          </thead>
+          <tbody id="table-body"></tbody>
+        </table>
+      </div>
+      <p id="table-note" class="note"></p>
+    </section>
+
+    <section class="card">
+      <h2>Squads</h2>
+      <div id="squads"></div>
+      <details class="pots-details">
+        <summary><h3>Pot list</h3></summary>
+        <div id="pots" class="pots"></div>
+        <p class="note">Players are placed in pots by individual ability and overall gameplay. The aim is balanced, evenly matched teams, not a ranking of anyone's worth. Every player is valued, and every player has a role to play.</p>
+      </details>
+    </section>
+
+    <section class="card">
+      <h2>Fixtures &amp; Results</h2>
+      <div id="fixtures"></div>
+    </section>
+
+    <section id="teams-admin" class="card" hidden>
+      <h2>Team Names</h2>
+      <form id="teams-form" class="teams-form"></form>
+    </section>
+
+    <section class="card">
+      <details>
+        <summary><h2>Rules</h2></summary>
+        <ul class="rules">
+          <li>Strictly a league competition: no final and no third-place match.</li>
+          <li>Each team plays the other two twice, home and away: 4 matches per team, 6 in total.</li>
+          <li>Fixture order: Team A v Team B, Team C v Team A, Team B v Team C. Each team plays 2 matches per matchday.</li>
+          <li>Points: Win 3 · Draw 1 · Loss 0.</li>
+          <li>Tie-breakers when level on points: 1) goal difference, 2) head-to-head record.</li>
+          <li>The team top of the table at the end is crowned <strong>PRIME FC Mini 4-a-side League Champion</strong>.</li>
+        </ul>
+      </details>
+    </section>
+  </main>
+
+  <footer class="wrap footer">
+    <p>PRIME FC — ACTIVE 🏆⚽</p>
+    <div id="admin-area"></div>
+  </footer>
+
+  <div id="toast" class="toast" role="status" hidden></div>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>
