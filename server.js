@@ -264,6 +264,23 @@ export function createLeagueServer({ dataFile, adminPin }) {
   });
 }
 
+// Vercel entry point: Vercel imports this module and calls the default export per request.
+// Its filesystem is read-only apart from /tmp, which is wiped on cold starts, so data saved
+// there is TEMPORARY until persistent storage is added. Static files come from public/ via the CDN.
+let vercelServer;
+export default function handler(req, res) {
+  if (!vercelServer) {
+    let adminPin = process.env.ADMIN_PIN;
+    if (!adminPin) {
+      // Never fall back to the well-known default PIN on a public deployment: admin stays locked instead.
+      adminPin = randomBytes(32).toString('hex');
+      console.error('[server] ADMIN_PIN is not set — admin login is disabled. Add ADMIN_PIN in the Vercel project settings.');
+    }
+    vercelServer = createLeagueServer({ dataFile: process.env.DATA_FILE || '/tmp/prime-fc/league.json', adminPin });
+  }
+  vercelServer.emit('request', req, res);
+}
+
 // Run directly: `npm start`
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const port = Number(process.env.PORT) || 3000;

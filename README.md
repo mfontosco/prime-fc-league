@@ -51,7 +51,7 @@ To change the pot list before the draw, edit `DEFAULT_POTS`. If `data/league.jso
 
 ## Deploy on Vercel
 
-`api/index.js` wraps the server as a Vercel function and `vercel.json` routes every request to it. Set `ADMIN_PIN` in the Vercel project's environment variables; without it, admin login is disabled.
+Vercel runs `server.js` directly: its default export is the request handler, and files in `public/` are served from Vercel's CDN. Set `ADMIN_PIN` in the Vercel project's environment variables; without it, admin login is disabled.
 
 > ⚠️ Vercel has no persistent disk. Data is kept in `/tmp`, which is wiped whenever the function cold-starts, so scores, draws, availability and photos **will be lost**. Persistent storage is still to do.
 
