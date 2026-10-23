@@ -26,13 +26,104 @@ export const DEFAULT_POTS = [
   { id: 'F', players: ['Favour', 'Korede', 'Lucky'] },
 ];
 
+export const EVENT_TYPES = ['goal', 'yellow', 'red'];
+export const AVAILABILITY = ['yes', 'maybe', 'no'];
+export const MAX_REPORT = 2000;
+export const MAX_PHOTOS = 6;
+
 /** Fill in fields added after a data file was first created, so older saves keep working. */
 export function normalizeState(state) {
   return {
     ...state,
+    matches: state.matches.map((m) => ({
+      events: [], motm: null, report: '', photos: [], ...m,
+    })),
     pots: state.pots ?? structuredClone(DEFAULT_POTS),
     draw: state.draw ?? null,
+    availability: state.availability ?? {},
   };
+}
+
+// ---------- Players ----------
+
+/** Every registered player (from the pot list). */
+export function allPlayers(state) {
+  return state.pots.flatMap((p) => p.players);
+}
+
+/** A team's squad as player names, or [] before the draw. */
+export function squadOf(state, teamId) {
+  return (state.draw?.squads[teamId] ?? []).map((s) => s.player);
+}
+
+/** The team a player was drawn into, or null. */
+export function teamOf(state, player) {
+  if (!state.draw) return null;
+  for (const [teamId, squad] of Object.entries(state.draw.squads)) {
+    if (squad.some((s) => s.player === player)) return teamId;
+  }
+  return null;
+}
+
+/** Players who can feature in a match: both squads after the draw, everyone before it. */
+export function matchPlayers(state, match) {
+  return state.draw ? [...squadOf(state, match.home), ...squadOf(state, match.away)] : allPlayers(state);
+}
+
+/**
+ * Validate a match event. Returns an error message, or null when valid.
+ * Event: { type: 'goal'|'yellow'|'red', team, player, ownGoal? }.
+ * `team` is the side credited: the scoring side for goals (including own goals),
+ * the offending side for cards.
+ */
+export function validateEvent(state, match, ev) {
+  if (!ev || !EVENT_TYPES.includes(ev.type)) return 'Event type must be goal, yellow or red';
+  if (ev.team !== match.home && ev.team !== match.away) return 'Team must be one of the two sides in this match';
+  if (!allPlayers(state).includes(ev.player)) return 'Unknown player';
+  if (ev.ownGoal !== undefined && typeof ev.ownGoal !== 'boolean') return 'ownGoal must be true or false';
+  if (ev.ownGoal && ev.type !== 'goal') return 'Only goals can be own goals';
+  if (state.draw) {
+    const other = ev.team === match.home ? match.away : match.home;
+    const expected = ev.ownGoal ? other : ev.team;
+    if (teamOf(state, ev.player) !== expected) {
+      return ev.ownGoal ? 'An own goal must be scored by a player from the other team' : 'Player is not in that team';
+    }
+  }
+  return null;
+}
+
+/** Goals recorded as events per side, to compare against the entered score. */
+export function recordedGoals(match) {
+  const goals = match.events.filter((e) => e.type === 'goal');
+  return {
+    home: goals.filter((e) => e.team === match.home).length,
+    away: goals.filter((e) => e.team === match.away).length,
+  };
+}
+
+/**
+ * Per-player season stats: goals (own goals excluded), cards and man-of-the-match awards.
+ * Only players with at least one entry are returned, top scorers first.
+ */
+export function playerStats(state) {
+  const rows = new Map();
+  const row = (player) => {
+    if (!rows.has(player)) rows.set(player, { player, team: teamOf(state, player), goals: 0, ownGoals: 0, yellow: 0, red: 0, motm: 0 });
+    return rows.get(player);
+  };
+  for (const m of state.matches) {
+    for (const e of m.events) {
+      if (e.type === 'goal') row(e.player)[e.ownGoal ? 'ownGoals' : 'goals']++;
+      else row(e.player)[e.type]++;
+    }
+    if (m.motm) row(m.motm).motm++;
+  }
+  return [...rows.values()].sort((a, b) => b.goals - a.goals || b.motm - a.motm || a.player.localeCompare(b.player));
+}
+
+/** Unique matchday dates, in order. */
+export function matchdays(state) {
+  return [...new Set(state.matches.map((m) => m.date))].sort();
 }
 
 /**
@@ -69,7 +160,7 @@ export function createInitialState(dates = DEFAULT_DATES) {
   FIRST_LEG.forEach(([home, away], i) => {
     matches.push({ id: i + 4, leg: 2, date: dates.leg2, home: away, away: home, homeGoals: null, awayGoals: null });
   });
-  return { teams, matches, pots: structuredClone(DEFAULT_POTS), draw: null };
+  return normalizeState({ teams, matches, pots: structuredClone(DEFAULT_POTS), draw: null });
 }
 
 export function isPlayed(m) {

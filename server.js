@@ -3,13 +3,14 @@
 // Anyone can view; editing requires the admin PIN (env ADMIN_PIN).
 
 import http from 'node:http';
-import { readFile, writeFile, rename, mkdir } from 'node:fs/promises';
+import { readFile, writeFile, rename, mkdir, unlink } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import { timingSafeEqual, createHash, randomInt } from 'node:crypto';
+import { timingSafeEqual, createHash, randomInt, randomBytes, randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   createInitialState, normalizeState, drawSquads, isValidScore, isValidDate,
+  validateEvent, matchPlayers, allPlayers, matchdays, AVAILABILITY, MAX_REPORT, MAX_PHOTOS,
 } from './src/league.js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
@@ -24,7 +25,16 @@ const STATIC = {
 };
 
 const MAX_BODY = 10 * 1024;
+const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 const MAX_NAME = 30;
+
+// Accepted photo formats, identified by their leading "magic" bytes rather than trusting the client.
+const PHOTO_TYPES = [
+  { ext: 'jpg', mime: 'image/jpeg', test: (b) => b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff },
+  { ext: 'png', mime: 'image/png', test: (b) => b.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) },
+  { ext: 'webp', mime: 'image/webp', test: (b) => b.subarray(0, 4).toString('latin1') === 'RIFF' && b.subarray(8, 12).toString('latin1') === 'WEBP' },
+];
+const PHOTO_NAME = /^[a-f0-9]{32}\.(jpg|png|webp)$/;
 
 function pinMatches(given, expected) {
   if (typeof given !== 'string') return false;
@@ -39,24 +49,29 @@ function send(res, status, body) {
   res.end(json);
 }
 
-function readBody(req) {
+function readRaw(req, limit) {
   return new Promise((resolve, reject) => {
     let size = 0;
     const chunks = [];
     req.on('data', (c) => {
       size += c.length;
-      if (size > MAX_BODY) { reject(Object.assign(new Error('Body too large'), { status: 413 })); req.destroy(); return; }
+      if (size > limit) { reject(Object.assign(new Error('Upload too large'), { status: 413 })); req.destroy(); return; }
       chunks.push(c);
     });
-    req.on('end', () => {
-      try { resolve(chunks.length ? JSON.parse(Buffer.concat(chunks).toString('utf8')) : {}); }
-      catch { reject(Object.assign(new Error('Invalid JSON'), { status: 400 })); }
-    });
+    req.on('end', () => resolve(Buffer.concat(chunks)));
     req.on('error', reject);
   });
 }
 
+async function readBody(req) {
+  const raw = await readRaw(req, MAX_BODY);
+  if (!raw.length) return {};
+  try { return JSON.parse(raw.toString('utf8')); }
+  catch { throw Object.assign(new Error('Invalid JSON'), { status: 400 }); }
+}
+
 export function createLeagueServer({ dataFile, adminPin }) {
+  const uploadsDir = path.join(path.dirname(dataFile), 'uploads');
   let state = null;
   let writeQueue = Promise.resolve();
 
@@ -110,7 +125,82 @@ export function createLeagueServer({ dataFile, adminPin }) {
         return send(res, 400, { error: 'Scores must both be whole numbers 0–99, or both empty' });
       }
       if ('date' in body && !isValidDate(body.date)) return send(res, 400, { error: 'Date must be YYYY-MM-DD' });
-      Object.assign(match, { homeGoals, awayGoals }, 'date' in body ? { date: body.date } : {});
+      if ('motm' in body && body.motm !== null && !matchPlayers(s, match).includes(body.motm)) {
+        return send(res, 400, { error: 'Man of the match must be a player from one of the two teams' });
+      }
+      if ('report' in body && (typeof body.report !== 'string' || body.report.length > MAX_REPORT)) {
+        return send(res, 400, { error: `Report must be text of at most ${MAX_REPORT} characters` });
+      }
+      Object.assign(match, { homeGoals, awayGoals });
+      if ('date' in body) match.date = body.date;
+      if ('motm' in body) match.motm = body.motm;
+      if ('report' in body) match.report = body.report.trim();
+      await persist();
+      return send(res, 200, s);
+    }
+
+    const findMatch = (id) => s.matches.find((m) => m.id === Number(id));
+
+    const eventsRoute = url.pathname.match(/^\/api\/matches\/(\d+)\/events(?:\/([\w-]+))?$/);
+    if (eventsRoute) {
+      if (!requireAdmin(req, res)) return;
+      const match = findMatch(eventsRoute[1]);
+      if (!match) return send(res, 404, { error: 'Match not found' });
+      if (req.method === 'POST' && !eventsRoute[2]) {
+        const body = await readBody(req);
+        const error = validateEvent(s, match, body);
+        if (error) return send(res, 400, { error });
+        const ev = { id: randomUUID(), type: body.type, team: body.team, player: body.player };
+        if (body.ownGoal) ev.ownGoal = true;
+        match.events.push(ev);
+        await persist();
+        return send(res, 200, s);
+      }
+      if (req.method === 'DELETE' && eventsRoute[2]) {
+        const before = match.events.length;
+        match.events = match.events.filter((e) => e.id !== eventsRoute[2]);
+        if (match.events.length === before) return send(res, 404, { error: 'Event not found' });
+        await persist();
+        return send(res, 200, s);
+      }
+    }
+
+    const photosRoute = url.pathname.match(/^\/api\/matches\/(\d+)\/photos(?:\/([^/]+))?$/);
+    if (photosRoute) {
+      if (!requireAdmin(req, res)) return;
+      const match = findMatch(photosRoute[1]);
+      if (!match) return send(res, 404, { error: 'Match not found' });
+      if (req.method === 'POST' && !photosRoute[2]) {
+        if (match.photos.length >= MAX_PHOTOS) return send(res, 400, { error: `At most ${MAX_PHOTOS} photos per match` });
+        const data = await readRaw(req, MAX_PHOTO_BYTES);
+        const type = PHOTO_TYPES.find((t) => data.length > 12 && t.test(data));
+        if (!type) return send(res, 400, { error: 'Photo must be a JPEG, PNG or WebP image' });
+        const name = `${randomBytes(16).toString('hex')}.${type.ext}`;
+        await mkdir(uploadsDir, { recursive: true });
+        await writeFile(path.join(uploadsDir, name), data);
+        match.photos.push(name);
+        await persist();
+        return send(res, 200, s);
+      }
+      if (req.method === 'DELETE' && photosRoute[2]) {
+        const name = photosRoute[2];
+        if (!match.photos.includes(name)) return send(res, 404, { error: 'Photo not found' });
+        match.photos = match.photos.filter((p) => p !== name);
+        await persist();
+        if (PHOTO_NAME.test(name)) await unlink(path.join(uploadsDir, name)).catch(() => {});
+        return send(res, 200, s);
+      }
+    }
+
+    // Availability is open to everyone: players mark themselves for each matchday.
+    if (req.method === 'PUT' && url.pathname === '/api/availability') {
+      const { date, player, status } = await readBody(req);
+      if (!matchdays(s).includes(date)) return send(res, 400, { error: 'Not a matchday' });
+      if (!allPlayers(s).includes(player)) return send(res, 400, { error: 'Unknown player' });
+      if (status !== null && !AVAILABILITY.includes(status)) return send(res, 400, { error: 'Status must be yes, maybe, no or null' });
+      s.availability[date] ??= {};
+      if (status === null) delete s.availability[date][player];
+      else s.availability[date][player] = status;
       await persist();
       return send(res, 200, s);
     }
@@ -153,6 +243,14 @@ export function createLeagueServer({ dataFile, adminPin }) {
     const url = new URL(req.url, 'http://localhost');
     try {
       if (url.pathname.startsWith('/api/')) return await handleApi(req, res, url);
+      const upload = req.method === 'GET' && url.pathname.match(/^\/uploads\/([^/]+)$/);
+      if (upload && PHOTO_NAME.test(upload[1])) {
+        const ext = upload[1].split('.').pop();
+        const content = await readFile(path.join(uploadsDir, upload[1])).catch(() => null);
+        if (!content) { res.writeHead(404, { 'Content-Type': 'text/plain' }); return res.end('Not found'); }
+        res.writeHead(200, { 'Content-Type': PHOTO_TYPES.find((t) => t.ext === ext).mime, 'Cache-Control': 'public, max-age=31536000, immutable' });
+        return res.end(content);
+      }
       const entry = req.method === 'GET' && STATIC[url.pathname];
       if (!entry) { res.writeHead(404, { 'Content-Type': 'text/plain' }); return res.end('Not found'); }
       const content = await readFile(path.join(ROOT, entry[0]));

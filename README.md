@@ -41,6 +41,14 @@ The 18 players are split into 6 pots of 3 (`DEFAULT_POTS` in `src/league.js`). T
 
 To change the pot list before the draw, edit `DEFAULT_POTS`. If `data/league.json` already exists, edit its `pots` field instead.
 
+## Match day features
+
+- **Goals, cards, man of the match, report, photos.** In admin mode, open "Goals, cards & report" under any match. After the draw the team is worked out from the player; own goals count for the other side and don't appear in the top-scorer table. A warning shows if the recorded goals don't add up to the score.
+- **Player stats:** top scorers, man-of-the-match awards and a discipline table (yellow/red cards). Cards are recorded only; there are no automatic suspensions.
+- **Photos:** JPEG, PNG or WebP, up to 5 MB and 6 per match. Files are checked by content and stored in `data/uploads/`.
+- **Who's playing?:** anyone can mark themselves ✅ / ❔ / ❌ for each matchday, **no PIN needed**. Each team shows how many more players it needs to field 4.
+- **Share on WhatsApp:** posts the table, results and top scorer to a chat.
+
 ## Develop
 
 ```bash
