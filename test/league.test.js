@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   createInitialState, computeStandings, leagueStatus, isValidScore, isValidDate, drawSquads, normalizeState,
-} from '../src/league.js';
+} from '../public/lib/league.js';
 
 /** Apply results keyed by "HOME-AWAY", e.g. { 'A-B': [2, 1] }. */
 function withResults(results) {

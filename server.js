@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 import {
   createInitialState, normalizeState, drawSquads, isValidScore, isValidDate,
   validateEvent, matchPlayers, allPlayers, matchdays, AVAILABILITY, MAX_REPORT, MAX_PHOTOS,
-} from './src/league.js';
+} from './public/lib/league.js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 
@@ -22,7 +22,7 @@ const STATIC = {
   '/index.html': [new URL('./public/index.html', import.meta.url), 'text/html; charset=utf-8'],
   '/app.js': [new URL('./public/app.js', import.meta.url), 'text/javascript; charset=utf-8'],
   '/styles.css': [new URL('./public/styles.css', import.meta.url), 'text/css; charset=utf-8'],
-  '/lib/league.js': [new URL('./src/league.js', import.meta.url), 'text/javascript; charset=utf-8'],
+  '/lib/league.js': [new URL('./public/lib/league.js', import.meta.url), 'text/javascript; charset=utf-8'],
 };
 
 const MAX_BODY = 10 * 1024;

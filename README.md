@@ -37,7 +37,7 @@ Anyone with the link can view. Click **Admin** in the footer and enter the PIN t
 
 ## Squads and the pot draw
 
-The 18 players are split into 6 pots of 3 (`DEFAULT_POTS` in `src/league.js`). The draw gives each team one player from every pot, so each squad has 6 players. It uses `crypto.randomInt` on the server and is saved with a timestamp. Redrawing needs an explicit confirmation, so a published draw is never overwritten by accident.
+The 18 players are split into 6 pots of 3 (`DEFAULT_POTS` in `public/lib/league.js`). The draw gives each team one player from every pot, so each squad has 6 players. It uses `crypto.randomInt` on the server and is saved with a timestamp. Redrawing needs an explicit confirmation, so a published draw is never overwritten by accident.
 
 To change the pot list before the draw, edit `DEFAULT_POTS`. If `data/league.json` already exists, edit its `pots` field instead.
 
@@ -63,6 +63,6 @@ npm test        # unit + API tests (node:test)
 npm run check   # syntax check
 ```
 
-- `src/league.js`: pure league logic (fixtures, standings, tie-breakers). Shared by the server and the browser.
+- `public/lib/league.js`: pure league logic (fixtures, standings, tie-breakers). Shared by the server and the browser.
 - `server.js`: zero-dependency HTTP server + JSON API.
 - `public/`: the web app (vanilla JS, no build step).

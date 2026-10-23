@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
   createInitialState, normalizeState, validateEvent, playerStats, recordedGoals, squadOf, teamOf,
-} from '../src/league.js';
+} from '../public/lib/league.js';
 import { createLeagueServer } from '../server.js';
 
 // A fixed draw so tests know who plays where.
