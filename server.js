@@ -16,12 +16,13 @@ import {
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 
 // Whitelisted static files only — no filesystem path handling from the URL.
+// Literal `new URL(..., import.meta.url)` paths let Vercel's bundler see and include these files.
 const STATIC = {
-  '/': ['public/index.html', 'text/html; charset=utf-8'],
-  '/index.html': ['public/index.html', 'text/html; charset=utf-8'],
-  '/app.js': ['public/app.js', 'text/javascript; charset=utf-8'],
-  '/styles.css': ['public/styles.css', 'text/css; charset=utf-8'],
-  '/lib/league.js': ['src/league.js', 'text/javascript; charset=utf-8'],
+  '/': [new URL('./public/index.html', import.meta.url), 'text/html; charset=utf-8'],
+  '/index.html': [new URL('./public/index.html', import.meta.url), 'text/html; charset=utf-8'],
+  '/app.js': [new URL('./public/app.js', import.meta.url), 'text/javascript; charset=utf-8'],
+  '/styles.css': [new URL('./public/styles.css', import.meta.url), 'text/css; charset=utf-8'],
+  '/lib/league.js': [new URL('./src/league.js', import.meta.url), 'text/javascript; charset=utf-8'],
 };
 
 const MAX_BODY = 10 * 1024;
@@ -253,7 +254,7 @@ export function createLeagueServer({ dataFile, adminPin }) {
       }
       const entry = req.method === 'GET' && STATIC[url.pathname];
       if (!entry) { res.writeHead(404, { 'Content-Type': 'text/plain' }); return res.end('Not found'); }
-      const content = await readFile(path.join(ROOT, entry[0]));
+      const content = await readFile(entry[0]);
       res.writeHead(200, { 'Content-Type': entry[1] });
       res.end(content);
     } catch (err) {
