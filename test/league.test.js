@@ -16,32 +16,46 @@ function withResults(results) {
 
 const order = (table) => table.map((r) => r.id).join('');
 
-test('fixtures follow the rules: progression, home-and-away, 6 matches, 4 per team', () => {
+test('fixtures follow the rules: a full round every Saturday, 31 Oct – 19 Dec, home and away alternating', () => {
   const { matches } = createInitialState();
-  assert.equal(matches.length, 6);
-  assert.deepEqual(matches.map((m) => `${m.home}-${m.away}`), ['A-B', 'C-A', 'B-C', 'B-A', 'A-C', 'C-B']);
-  for (const id of ['A', 'B', 'C']) {
-    assert.equal(matches.filter((m) => m.home === id || m.away === id).length, 4);
-  }
-  // Each team plays 2 matches per matchday.
-  for (const leg of [1, 2]) {
-    const legMatches = matches.filter((m) => m.leg === leg);
+  assert.equal(matches.length, 24);
+  assert.deepEqual(matches.slice(0, 6).map((m) => `${m.home}-${m.away}`), ['A-B', 'C-A', 'B-C', 'B-A', 'A-C', 'C-B']);
+  const days = [...new Set(matches.map((m) => m.date))];
+  assert.deepEqual(days, ['2026-10-31', '2026-11-07', '2026-11-14', '2026-11-21', '2026-11-28', '2026-12-05', '2026-12-12', '2026-12-19']);
+  for (const day of days) {
+    assert.equal(new Date(`${day}T12:00:00Z`).getUTCDay(), 6, `${day} is a Saturday`);
+    const dayMatches = matches.filter((m) => m.date === day);
+    // Each team plays 2 matches per matchday.
     for (const id of ['A', 'B', 'C']) {
-      assert.equal(legMatches.filter((m) => m.home === id || m.away === id).length, 2);
+      assert.equal(dayMatches.filter((m) => m.home === id || m.away === id).length, 2);
     }
   }
-  assert.equal(matches[0].date, '2026-10-31');
-  assert.equal(matches[5].date, '2026-12-19');
+  for (const id of ['A', 'B', 'C']) {
+    assert.equal(matches.filter((m) => m.home === id || m.away === id).length, 16);
+    assert.equal(matches.filter((m) => m.home === id).length, 8);
+  }
+  assert.deepEqual(matches.map((m) => m.id), matches.map((_, i) => i + 1));
+});
+
+test('old 2-matchday saves move to the weekly schedule only while nothing is recorded', () => {
+  const oldMatch = (id, extra = {}) => ({ id, leg: id <= 3 ? 1 : 2, date: id <= 3 ? '2026-10-31' : '2026-12-19', home: 'A', away: 'B', homeGoals: null, awayGoals: null, ...extra });
+  const old = (extra) => ({ teams: [], matches: [1, 2, 3, 4, 5, 6].map((id) => oldMatch(id, id === 1 ? extra : {})) });
+  assert.equal(normalizeState(old({})).matches.length, 24);
+  const kept = normalizeState(old({ homeGoals: 2, awayGoals: 1 }));
+  assert.equal(kept.matches.length, 6);
+  assert.equal(kept.matches[0].homeGoals, 2);
+  assert.equal(kept.matches[3].round, 2);
 });
 
 test('points: win 3, draw 1, loss 0', () => {
   const table = computeStandings(withResults({ 'A-B': [2, 0], 'C-A': [1, 1] }));
   const row = Object.fromEntries(table.map((r) => [r.id, r]));
-  assert.equal(row.A.points, 4);
+  // Each pairing is played 4 times in the season; the same result is applied to all of them.
+  assert.equal(row.A.points, 16);
   assert.equal(row.B.points, 0);
-  assert.equal(row.C.points, 1);
-  assert.equal(row.A.played, 2);
-  assert.equal(row.A.gd, 2);
+  assert.equal(row.C.points, 4);
+  assert.equal(row.A.played, 8);
+  assert.equal(row.A.gd, 8);
 });
 
 test('unplayed matches do not count', () => {
@@ -63,7 +77,7 @@ test('tie-break 1: goal difference ranks level-on-points teams', () => {
 });
 
 test('tie-break 2: head-to-head decides when points and GD are level', () => {
-  // A and B: equal points (7) and GD (+3); A beat B 2-0 and lost 0-1 → A wins h2h on GD.
+  // A and B: equal points and GD; A beat B 2-0 and lost 0-1 → A wins h2h on GD.
   const state = withResults({
     'A-B': [2, 0], 'B-A': [1, 0],
     'C-A': [1, 1], 'A-C': [2, 0],
@@ -104,12 +118,12 @@ test('three-way tie on points and GD uses a head-to-head mini-league among all t
     'B-C': [1, 0], 'C-B': [1, 0],
   });
   const table = computeStandings(state);
-  assert.ok(table.every((r) => r.points === 6 && r.gd === 0));
+  assert.ok(table.every((r) => r.points === 24 && r.gd === 0));
   assert.equal(order(table), 'ABC');
   assert.deepEqual(table.map((r) => r.position), [1, 2, 3]);
 });
 
-test('champion only once all 6 matches are played', () => {
+test('champion only once every match is played', () => {
   const partial = withResults({ 'A-B': [3, 0] });
   const s1 = leagueStatus(partial);
   assert.equal(s1.complete, false);
@@ -123,7 +137,7 @@ test('champion only once all 6 matches are played', () => {
   const s2 = leagueStatus(full);
   assert.equal(s2.complete, true);
   assert.equal(s2.champion.id, 'A');
-  assert.equal(s2.champion.points, 10);
+  assert.equal(s2.champion.points, 40);
 });
 
 test('score validation', () => {

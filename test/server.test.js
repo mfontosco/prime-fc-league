@@ -33,7 +33,7 @@ test('GET /api/state seeds the league', async () => {
   assert.equal(res.status, 200);
   const s = await res.json();
   assert.equal(s.teams.length, 3);
-  assert.equal(s.matches.length, 6);
+  assert.equal(s.matches.length, 24);
 });
 
 test('serves the app and shared league module', async () => {

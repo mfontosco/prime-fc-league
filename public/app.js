@@ -325,7 +325,7 @@ function matchExtras(m) {
 
 function matchRow(m, names) {
   const played = isPlayed(m);
-  const legTag = h('span', { class: 'leg' }, `Match ${m.id} · Leg ${m.leg}`);
+  const legTag = h('span', { class: 'leg' }, `Match ${m.id}`);
 
   if (!adminPin) {
     const score = played

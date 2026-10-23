@@ -28,12 +28,13 @@ Anyone with the link can view. Click **Admin** in the footer and enter the PIN t
 
 ## League rules implemented
 
-- 3 teams, double round-robin (home & away): 6 matches, 4 per team, 2 per team per matchday.
-- Fixture order: A v B, C v A, B v C, then reversed for the second leg.
+- 3 teams, a full round every Saturday from 31 Oct to 19 Dec 2026: 8 matchdays, 24 matches, 16 per team, 2 per team per matchday.
+- Fixture order each week: A v B, C v A, B v C. Home and away swap every other week.
+- Strictly a league: no final. Dec 19 is the last matchday.
 - Win 3 · Draw 1 · Loss 0.
 - Ranking: points → goal difference → head-to-head (mini-table of matches between the tied teams: h2h points, h2h goal difference, h2h goals scored).
 - Teams still level after that share a position (`1=`). The rules define no further tie-breaker, so the app doesn't invent one.
-- The champion is declared only once all 6 results are in.
+- The champion is declared only once all 24 results are in.
 
 ## Squads and the pot draw
 

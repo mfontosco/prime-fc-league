@@ -7,14 +7,16 @@ export const TEAM_IDS = ['A', 'B', 'C'];
 export const MAX_GOALS = 99;
 
 // Fixture progression from the rules: A v B, C v A, B v C.
-// The second leg reverses home and away.
-const FIRST_LEG = [
+// One full round every Saturday; home and away swap each week.
+const ROUND = [
   ['A', 'B'],
   ['C', 'A'],
   ['B', 'C'],
 ];
 
-export const DEFAULT_DATES = { leg1: '2026-10-31', leg2: '2026-12-19' };
+// Every Saturday from 31 Oct to 19 Dec 2026. Strictly a league: no final.
+export const SEASON_START = '2026-10-31';
+export const ROUNDS = 8;
 
 // Official Prime FC pot list. Each team gets exactly one player from every pot.
 export const DEFAULT_POTS = [
@@ -35,13 +37,23 @@ export const MAX_PHOTOS = 6;
 export function normalizeState(state) {
   return {
     ...state,
-    matches: state.matches.map((m) => ({
+    matches: migrateFixtures(state.matches).map((m) => ({
       events: [], motm: null, report: '', photos: [], ...m,
     })),
     pots: state.pots ?? structuredClone(DEFAULT_POTS),
     draw: state.draw ?? null,
     availability: state.availability ?? {},
   };
+}
+
+/**
+ * Saves from the original 2-matchday format (6 matches with `leg`) get the weekly schedule,
+ * but only while nothing has been recorded on them, so no result is ever thrown away.
+ */
+function migrateFixtures(matches) {
+  if (!matches.some((m) => 'leg' in m)) return matches;
+  const untouched = matches.every((m) => !isPlayed(m) && !m.events?.length && !m.motm && !m.report && !m.photos?.length);
+  return untouched ? buildFixtures() : matches.map(({ leg, ...m }) => ({ round: leg, ...m }));
 }
 
 // ---------- Players ----------
@@ -150,17 +162,30 @@ export function drawSquads(pots, teamIds, randomInt) {
   return { squads };
 }
 
-/** Build the initial league state: 3 teams, 6 fixtures, no results, pots not yet drawn. */
-export function createInitialState(dates = DEFAULT_DATES) {
-  const teams = TEAM_IDS.map((id) => ({ id, name: `Team ${id}` }));
+/** Add whole days to a YYYY-MM-DD date. */
+function addDays(date, days) {
+  const d = new Date(`${date}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+/** One full round per week for ROUNDS weeks; even rounds reverse home and away. */
+function buildFixtures(start = SEASON_START) {
   const matches = [];
-  FIRST_LEG.forEach(([home, away], i) => {
-    matches.push({ id: i + 1, leg: 1, date: dates.leg1, home, away, homeGoals: null, awayGoals: null });
-  });
-  FIRST_LEG.forEach(([home, away], i) => {
-    matches.push({ id: i + 4, leg: 2, date: dates.leg2, home: away, away: home, homeGoals: null, awayGoals: null });
-  });
-  return normalizeState({ teams, matches, pots: structuredClone(DEFAULT_POTS), draw: null });
+  for (let round = 1; round <= ROUNDS; round++) {
+    const date = addDays(start, (round - 1) * 7);
+    for (const [home, away] of ROUND) {
+      const [h, a] = round % 2 ? [home, away] : [away, home];
+      matches.push({ id: matches.length + 1, round, date, home: h, away: a, homeGoals: null, awayGoals: null });
+    }
+  }
+  return matches;
+}
+
+/** Build the initial league state: 3 teams, a weekly fixture list, no results, pots not yet drawn. */
+export function createInitialState(start = SEASON_START) {
+  const teams = TEAM_IDS.map((id) => ({ id, name: `Team ${id}` }));
+  return normalizeState({ teams, matches: buildFixtures(start), pots: structuredClone(DEFAULT_POTS), draw: null });
 }
 
 export function isPlayed(m) {
@@ -262,7 +287,7 @@ export function computeStandings(state) {
 
 /**
  * League status.
- * - `complete`: all 6 matches have results.
+ * - `complete`: every match has a result.
  * - `champion`: the team at the top once complete, or null when the top spot is
  *   still level after every tie-breaker (`undecided: true`).
  * - `leader`: the current top team(s) while the league is in progress.
