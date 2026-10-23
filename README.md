@@ -49,6 +49,12 @@ To change the pot list before the draw, edit `DEFAULT_POTS`. If `data/league.jso
 - **Who's playing?:** anyone can mark themselves ✅ / ❔ / ❌ for each matchday, **no PIN needed**. Each team shows how many more players it needs to field 4.
 - **Share on WhatsApp:** posts the table, results and top scorer to a chat.
 
+## Deploy on Vercel
+
+`api/index.js` wraps the server as a Vercel function and `vercel.json` routes every request to it. Set `ADMIN_PIN` in the Vercel project's environment variables; without it, admin login is disabled.
+
+> ⚠️ Vercel has no persistent disk. Data is kept in `/tmp`, which is wiped whenever the function cold-starts, so scores, draws, availability and photos **will be lost**. Persistent storage is still to do.
+
 ## Develop
 
 ```bash
