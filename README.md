@@ -22,7 +22,7 @@ $env:ADMIN_PIN = "your-secret-pin"; npm start
 |-------------|-----------------------|-------------------------------------------|
 | `ADMIN_PIN` | `prime2026` (warns)   | PIN needed to enter scores / edit teams   |
 | `PORT`      | `3000`                | HTTP port                                 |
-| `DATA_FILE` | `data/league.json`    | Where results are saved                   |
+| `DATA_FILE` | `data/league.json`    | Where results are saved (when Redis isn't configured) |
 
 Anyone with the link can view. Click **Admin** in the footer and enter the PIN to enter scores, change match dates, rename teams and run the squad draw.
 
@@ -51,9 +51,17 @@ To change the pot list before the draw, edit `DEFAULT_POTS`. If `data/league.jso
 
 ## Deploy on Vercel
 
-Vercel runs `server.js` directly: its default export is the request handler, and files in `public/` are served from Vercel's CDN. Set `ADMIN_PIN` in the Vercel project's environment variables; without it, admin login is disabled.
+Vercel runs `server.js` directly: its default export is the request handler, and files in `public/` are served from Vercel's CDN.
 
-> ⚠️ Vercel has no persistent disk. Data is kept in `/tmp`, which is wiped whenever the function cold-starts, so scores, draws, availability and photos **will be lost**. Persistent storage is still to do.
+Set these in the Vercel project's environment variables:
+
+| Env var | Purpose |
+|---------|---------|
+| `ADMIN_PIN` | Admin PIN. Without it, admin login is disabled. |
+| `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` | League data (from the Upstash console → your database → REST API). `KV_REST_API_URL` / `KV_REST_API_TOKEN` also work. |
+| `BLOB_READ_WRITE_TOKEN` | Match photos. Added automatically when a Vercel Blob store is connected to the project. |
+
+Without the Redis variables the app falls back to `/tmp`, which Vercel wipes on every cold start, so nothing is kept. Saves are version-checked: if two people save at the same moment, the later request is re-run on the newer data instead of overwriting it.
 
 ## Develop
 
@@ -65,4 +73,5 @@ npm run check   # syntax check
 
 - `public/lib/league.js`: pure league logic (fixtures, standings, tie-breakers). Shared by the server and the browser.
 - `server.js`: zero-dependency HTTP server + JSON API.
+- `src/storage.js`: where data is saved: `data/` locally, or Upstash Redis + Vercel Blob when configured.
 - `public/`: the web app (vanilla JS, no build step).

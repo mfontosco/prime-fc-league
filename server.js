@@ -1,10 +1,10 @@
 // PRIME FC Mini League — zero-dependency Node server.
-// Serves the web app and a small JSON API; results persist to data/league.json.
+// Serves the web app and a small JSON API. Results persist to data/league.json locally,
+// or to Upstash Redis + Vercel Blob when those are configured (see src/storage.js).
 // Anyone can view; editing requires the admin PIN (env ADMIN_PIN).
 
 import http from 'node:http';
-import { readFile, writeFile, rename, mkdir, unlink } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
 import { timingSafeEqual, createHash, randomInt, randomBytes, randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -12,6 +12,7 @@ import {
   createInitialState, normalizeState, drawSquads, isValidScore, isValidDate,
   validateEvent, matchPlayers, allPlayers, matchdays, AVAILABILITY, MAX_REPORT, MAX_PHOTOS,
 } from './public/lib/league.js';
+import { createFileStore, storeFromEnv, ConflictError } from './src/storage.js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 
@@ -50,8 +51,9 @@ function send(res, status, body) {
   res.end(json);
 }
 
+// The body is kept on the request so a request retried after a save conflict can read it again.
 function readRaw(req, limit) {
-  return new Promise((resolve, reject) => {
+  req.rawBody ??= new Promise((resolve, reject) => {
     let size = 0;
     const chunks = [];
     req.on('data', (c) => {
@@ -62,6 +64,7 @@ function readRaw(req, limit) {
     req.on('end', () => resolve(Buffer.concat(chunks)));
     req.on('error', reject);
   });
+  return req.rawBody;
 }
 
 async function readBody(req) {
@@ -71,31 +74,19 @@ async function readBody(req) {
   catch { throw Object.assign(new Error('Invalid JSON'), { status: 400 }); }
 }
 
-export function createLeagueServer({ dataFile, adminPin }) {
-  const uploadsDir = path.join(path.dirname(dataFile), 'uploads');
-  let state = null;
-  let writeQueue = Promise.resolve();
+const SAVE_ATTEMPTS = 5;
 
+export function createLeagueServer({ store, dataFile, adminPin }) {
+  store ??= createFileStore(dataFile);
+
+  // Each request works on its own fresh copy; saving fails with ConflictError if another
+  // request saved in between, and the whole request is then re-run on the newer state.
   async function load() {
-    if (state) return state;
-    if (existsSync(dataFile)) {
-      state = normalizeState(JSON.parse(await readFile(dataFile, 'utf8')));
-    } else {
-      state = createInitialState();
-      await persist();
-    }
-    return state;
-  }
-
-  // Serialise writes and replace the file atomically so a crash never leaves half a file.
-  function persist() {
-    writeQueue = writeQueue.then(async () => {
-      await mkdir(path.dirname(dataFile), { recursive: true });
-      const tmp = `${dataFile}.tmp`;
-      await writeFile(tmp, JSON.stringify(state, null, 2));
-      await rename(tmp, dataFile);
-    });
-    return writeQueue;
+    const { state, rev } = await store.load();
+    if (state) return { s: normalizeState(state), rev };
+    const s = createInitialState();
+    await store.save(s, rev);
+    return { s, rev: rev + 1 };
   }
 
   function requireAdmin(req, res) {
@@ -105,7 +96,8 @@ export function createLeagueServer({ dataFile, adminPin }) {
   }
 
   async function handleApi(req, res, url) {
-    const s = await load();
+    const { s, rev } = await load();
+    const persist = () => store.save(s, rev);
 
     if (req.method === 'GET' && url.pathname === '/api/state') return send(res, 200, s);
 
@@ -176,9 +168,13 @@ export function createLeagueServer({ dataFile, adminPin }) {
         const data = await readRaw(req, MAX_PHOTO_BYTES);
         const type = PHOTO_TYPES.find((t) => data.length > 12 && t.test(data));
         if (!type) return send(res, 400, { error: 'Photo must be a JPEG, PNG or WebP image' });
-        const name = `${randomBytes(16).toString('hex')}.${type.ext}`;
-        await mkdir(uploadsDir, { recursive: true });
-        await writeFile(path.join(uploadsDir, name), data);
+        // Upload once even if the request is re-run after a save conflict.
+        req.photoUpload ??= (async () => {
+          const name = `${randomBytes(16).toString('hex')}.${type.ext}`;
+          await store.putPhoto(name, data, type.mime);
+          return name;
+        })();
+        const name = await req.photoUpload;
         match.photos.push(name);
         await persist();
         return send(res, 200, s);
@@ -188,7 +184,7 @@ export function createLeagueServer({ dataFile, adminPin }) {
         if (!match.photos.includes(name)) return send(res, 404, { error: 'Photo not found' });
         match.photos = match.photos.filter((p) => p !== name);
         await persist();
-        if (PHOTO_NAME.test(name)) await unlink(path.join(uploadsDir, name)).catch(() => {});
+        if (PHOTO_NAME.test(name)) await store.deletePhoto(name);
         return send(res, 200, s);
       }
     }
@@ -243,11 +239,16 @@ export function createLeagueServer({ dataFile, adminPin }) {
   return http.createServer(async (req, res) => {
     const url = new URL(req.url, 'http://localhost');
     try {
-      if (url.pathname.startsWith('/api/')) return await handleApi(req, res, url);
+      if (url.pathname.startsWith('/api/')) {
+        for (let attempt = 1; ; attempt++) {
+          try { return await handleApi(req, res, url); }
+          catch (err) { if (!(err instanceof ConflictError) || attempt === SAVE_ATTEMPTS) throw err; }
+        }
+      }
       const upload = req.method === 'GET' && url.pathname.match(/^\/uploads\/([^/]+)$/);
       if (upload && PHOTO_NAME.test(upload[1])) {
         const ext = upload[1].split('.').pop();
-        const content = await readFile(path.join(uploadsDir, upload[1])).catch(() => null);
+        const content = await store.getPhoto(upload[1]);
         if (!content) { res.writeHead(404, { 'Content-Type': 'text/plain' }); return res.end('Not found'); }
         res.writeHead(200, { 'Content-Type': PHOTO_TYPES.find((t) => t.ext === ext).mime, 'Cache-Control': 'public, max-age=31536000, immutable' });
         return res.end(content);
@@ -266,8 +267,8 @@ export function createLeagueServer({ dataFile, adminPin }) {
 }
 
 // Vercel entry point: Vercel imports this module and calls the default export per request.
-// Its filesystem is read-only apart from /tmp, which is wiped on cold starts, so data saved
-// there is TEMPORARY until persistent storage is added. Static files come from public/ via the CDN.
+// Data goes to Upstash Redis + Vercel Blob. Without Redis credentials it falls back to /tmp,
+// which is wiped on cold starts. Static files come from public/ via the CDN.
 let vercelServer;
 export default function handler(req, res) {
   if (!vercelServer) {
@@ -277,7 +278,9 @@ export default function handler(req, res) {
       adminPin = randomBytes(32).toString('hex');
       console.error('[server] ADMIN_PIN is not set — admin login is disabled. Add ADMIN_PIN in the Vercel project settings.');
     }
-    vercelServer = createLeagueServer({ dataFile: process.env.DATA_FILE || '/tmp/prime-fc/league.json', adminPin });
+    const { store, kind } = storeFromEnv(process.env, '/tmp/prime-fc/league.json');
+    if (kind === 'file') console.error('[server] Upstash Redis is not configured — data is saved to /tmp and will be lost on restart.');
+    vercelServer = createLeagueServer({ store, adminPin });
   }
   vercelServer.emit('request', req, res);
 }
@@ -290,8 +293,9 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     adminPin = 'prime2026';
     console.warn('[server] ADMIN_PIN not set — using default PIN "prime2026". Set ADMIN_PIN before sharing the app.');
   }
-  const dataFile = process.env.DATA_FILE || path.join(ROOT, 'data', 'league.json');
-  const server = createLeagueServer({ dataFile, adminPin });
+  const { store, kind } = storeFromEnv(process.env, path.join(ROOT, 'data', 'league.json'));
+  if (kind === 'cloud') console.log('[server] Saving to Upstash Redis + Vercel Blob.');
+  const server = createLeagueServer({ store, adminPin });
   server.on('error', (err) => {
     if (err.code !== 'EADDRINUSE') throw err;
     console.error(`[server] Port ${port} is already in use by another program.`);
