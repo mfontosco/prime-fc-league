@@ -2,6 +2,7 @@ import {
   leagueStatus, isPlayed, playerStats, recordedGoals, matchPlayers, squadOf, teamOf, allPlayers, matchdays,
   MAX_REPORT, MAX_PHOTOS,
 } from '/lib/league.js';
+import { matchdayReportHtml } from '/lib/report.js';
 
 const REFRESH_MS = 30_000;
 const PIN_KEY = 'primefc.adminPin';
@@ -352,9 +353,23 @@ function renderFixtures(names) {
   }
   let matchday = 0;
   const groups = [...byDate].map(([date, matches]) => h('div', { class: 'matchday' },
-    h('h3', {}, h('span', { class: 'md' }, `Matchday ${++matchday}`), ' ', formatDate(date)),
+    h('div', { class: 'matchday-head' },
+      h('h3', {}, h('span', { class: 'md' }, `Matchday ${++matchday}`), ' ', formatDate(date)),
+      matches.some(isPlayed)
+        ? h('button', { type: 'button', class: 'btn ghost small', onclick: () => openMatchdayReport(date) }, '📄 Download PDF')
+        : null),
     h('ol', { class: 'matches' }, matches.map((m) => matchRow(m, names)))));
   $('fixtures').replaceChildren(...groups);
+}
+
+/** Open the printable matchday sheet in a new tab; the print dialog saves it as a PDF. */
+function openMatchdayReport(date) {
+  const win = window.open('', '_blank');
+  if (!win) return toast('Allow pop-ups for this site to download the report', 'error');
+  win.document.write(matchdayReportHtml(state, date, { origin: location.origin }));
+  win.document.close();
+  win.focus();
+  setTimeout(() => win.print(), 300);
 }
 
 function eventLabel(e) {

@@ -106,7 +106,8 @@ h2 {
 
 /* ---------- Fixtures ---------- */
 .matchday + .matchday { margin-top: 22px; }
-.matchday h3 { margin: 0 0 10px; font-size: 0.95rem; font-weight: 600; color: var(--muted); }
+.matchday-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+.matchday h3 { margin: 0; font-size: 0.95rem; font-weight: 600; color: var(--muted); }
 .matchday .md { color: var(--text); }
 .matches { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
 .match { background: var(--pitch-700); border-radius: 10px; padding: 10px 14px 12px; }

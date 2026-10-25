@@ -24,6 +24,7 @@ const STATIC = {
   '/app.js': [new URL('./public/app.js', import.meta.url), 'text/javascript; charset=utf-8'],
   '/styles.css': [new URL('./public/styles.css', import.meta.url), 'text/css; charset=utf-8'],
   '/lib/league.js': [new URL('./public/lib/league.js', import.meta.url), 'text/javascript; charset=utf-8'],
+  '/lib/report.js': [new URL('./public/lib/report.js', import.meta.url), 'text/javascript; charset=utf-8'],
 };
 
 const MAX_BODY = 10 * 1024;

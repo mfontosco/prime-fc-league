@@ -50,6 +50,7 @@ To change the pot list before the draw, edit `DEFAULT_POTS`. If `data/league.jso
 - **Player stats:** top scorers, top assists, man-of-the-match and best-defender awards, and a discipline table (yellow/red cards). Assists are optional on each goal and must come from the scoring team; best defender is picked per match, like man of the match. Cards are recorded only; there are no automatic suspensions.
 - **Photos:** JPEG, PNG or WebP, up to 5 MB and 6 per match. Files are checked by content and stored in `data/uploads/`.
 - **Who's playing?:** anyone can mark themselves ✅ / ❔ / ❌ for each matchday, **no PIN needed**. Each team shows how many more players it needs to field 4.
+- **Matchday report (PDF):** each matchday with a result has a **📄 Download PDF** button. It opens a one-page sheet with the results, scorers and assists, cards, awards, match reports and the league table as it stood after that day. The browser's print dialog saves it as a PDF. Anyone can use it, no PIN needed.
 - **Share on WhatsApp:** posts the table, results and top scorer to a chat.
 
 ## Deploy on Vercel

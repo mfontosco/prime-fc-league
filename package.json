@@ -9,6 +9,6 @@
     "start": "node server.js",
     "dev": "node --watch --env-file-if-exists=.env server.js",
     "test": "node --test \"test/*.test.js\"",
-    "check": "node --check server.js && node --check src/storage.js && node --check public/lib/league.js && node --check public/app.js"
+    "check": "node --check server.js && node --check src/storage.js && node --check public/lib/league.js && node --check public/lib/report.js && node --check public/app.js"
   }
 }

@@ -37,7 +37,7 @@ test('GET /api/state seeds the league', async () => {
 });
 
 test('serves the app and shared league module', async () => {
-  for (const p of ['/', '/app.js', '/styles.css', '/lib/league.js']) {
+  for (const p of ['/', '/app.js', '/styles.css', '/lib/league.js', '/lib/report.js']) {
     assert.equal((await fetch(base + p)).status, 200, p);
   }
   assert.equal((await fetch(`${base}/../server.js`)).status, 404);
