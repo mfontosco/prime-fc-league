@@ -44,8 +44,8 @@ To change the pot list before the draw, edit `DEFAULT_POTS`. If `data/league.jso
 
 ## Match day features
 
-- **Goals, cards, man of the match, report, photos.** In admin mode, open "Goals, cards & report" under any match. After the draw the team is worked out from the player; own goals count for the other side and don't appear in the top-scorer table. A warning shows if the recorded goals don't add up to the score.
-- **Player stats:** top scorers, man-of-the-match awards and a discipline table (yellow/red cards). Cards are recorded only; there are no automatic suspensions.
+- **Goals, assists, cards, man of the match, best defender, report, photos.** In admin mode, open "Goals, cards & report" under any match. After the draw the team is worked out from the player; own goals count for the other side and don't appear in the top-scorer table. A warning shows if the recorded goals don't add up to the score.
+- **Player stats:** top scorers, top assists, man-of-the-match and best-defender awards, and a discipline table (yellow/red cards). Assists are optional on each goal and must come from the scoring team; best defender is picked per match, like man of the match. Cards are recorded only; there are no automatic suspensions.
 - **Photos:** JPEG, PNG or WebP, up to 5 MB and 6 per match. Files are checked by content and stored in `data/uploads/`.
 - **Who's playing?:** anyone can mark themselves ✅ / ❔ / ❌ for each matchday, **no PIN needed**. Each team shows how many more players it needs to field 4.
 - **Share on WhatsApp:** posts the table, results and top scorer to a chat.

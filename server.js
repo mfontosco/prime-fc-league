@@ -121,12 +121,16 @@ export function createLeagueServer({ store, dataFile, adminPin }) {
       if ('motm' in body && body.motm !== null && !matchPlayers(s, match).includes(body.motm)) {
         return send(res, 400, { error: 'Man of the match must be a player from one of the two teams' });
       }
+      if ('bestDefender' in body && body.bestDefender !== null && !matchPlayers(s, match).includes(body.bestDefender)) {
+        return send(res, 400, { error: 'Best defender must be a player from one of the two teams' });
+      }
       if ('report' in body && (typeof body.report !== 'string' || body.report.length > MAX_REPORT)) {
         return send(res, 400, { error: `Report must be text of at most ${MAX_REPORT} characters` });
       }
       Object.assign(match, { homeGoals, awayGoals });
       if ('date' in body) match.date = body.date;
       if ('motm' in body) match.motm = body.motm;
+      if ('bestDefender' in body) match.bestDefender = body.bestDefender;
       if ('report' in body) match.report = body.report.trim();
       await persist();
       return send(res, 200, s);
@@ -145,6 +149,7 @@ export function createLeagueServer({ store, dataFile, adminPin }) {
         if (error) return send(res, 400, { error });
         const ev = { id: randomUUID(), type: body.type, team: body.team, player: body.player };
         if (body.ownGoal) ev.ownGoal = true;
+        if (body.assist) ev.assist = body.assist;
         match.events.push(ev);
         await persist();
         return send(res, 200, s);

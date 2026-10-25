@@ -26,7 +26,7 @@ function drawnState() {
 
 test('new match fields default sensibly, including for old saves', () => {
   const s = createInitialState();
-  assert.deepEqual([s.matches[0].events, s.matches[0].motm, s.matches[0].report, s.matches[0].photos], [[], null, '', []]);
+  assert.deepEqual([s.matches[0].events, s.matches[0].motm, s.matches[0].bestDefender, s.matches[0].report, s.matches[0].photos], [[], null, null, '', []]);
   assert.deepEqual(s.availability, {});
   const old = normalizeState({ teams: s.teams, matches: s.matches.map(({ id, home, away, date, leg }) => ({ id, home, away, date, leg })) });
   assert.deepEqual(old.matches[0].events, []);
@@ -58,6 +58,17 @@ test('validateEvent: own goals are credited to the other side', () => {
   assert.match(validateEvent(s, m, { type: 'red', team: 'A', player: 'Theo', ownGoal: true }), /Only goals/);
 });
 
+test('validateEvent: assists come from a teammate of the scorer, on goals only', () => {
+  const s = drawnState();
+  const m = s.matches[0]; // A v B
+  assert.equal(validateEvent(s, m, { type: 'goal', team: 'A', player: 'Theo', assist: 'Ugo' }), null);
+  assert.match(validateEvent(s, m, { type: 'goal', team: 'A', player: 'Theo', assist: 'Iyke' }), /scoring team/);
+  assert.match(validateEvent(s, m, { type: 'goal', team: 'A', player: 'Theo', assist: 'Theo' }), /own goal/);
+  assert.match(validateEvent(s, m, { type: 'goal', team: 'A', player: 'Theo', assist: 'Messi' }), /Unknown assist/);
+  assert.match(validateEvent(s, m, { type: 'yellow', team: 'A', player: 'Theo', assist: 'Ugo' }), /Only goals/);
+  assert.match(validateEvent(s, m, { type: 'goal', team: 'A', player: 'Iyke', ownGoal: true, assist: 'Ugo' }), /Only goals/);
+});
+
 test('before the draw any registered player is accepted', () => {
   const s = createInitialState();
   assert.equal(validateEvent(s, s.matches[0], { type: 'goal', team: 'A', player: 'Lucky' }), null);
@@ -73,8 +84,11 @@ test('playerStats: top scorers, own goals separate, cards and MOTM counted', () 
     { id: '5', type: 'yellow', team: 'B', player: 'Chuks' },
     { id: '6', type: 'red', team: 'B', player: 'Akpos' },
   ];
+  s.matches[0].events[0].assist = 'Ugo';
+  s.matches[0].events[1].assist = 'Ugo';
   s.matches[0].motm = 'Theo';
   s.matches[1].motm = 'Theo';
+  s.matches[0].bestDefender = 'Akpos';
   const stats = playerStats(s);
   const by = Object.fromEntries(stats.map((r) => [r.player, r]));
   assert.equal(stats[0].player, 'Theo');
@@ -85,6 +99,10 @@ test('playerStats: top scorers, own goals separate, cards and MOTM counted', () 
   assert.equal(by.Iyke.ownGoals, 1);
   assert.equal(by.Chuks.yellow, 1);
   assert.equal(by.Akpos.red, 1);
+  assert.equal(by.Ugo.assists, 2);
+  assert.equal(by.Ugo.goals, 0);
+  assert.equal(by.Akpos.bestDefender, 1);
+  assert.equal(by.Theo.bestDefender, 0);
   assert.deepEqual(recordedGoals(s.matches[0]), { home: 3, away: 1 });
 });
 
@@ -135,6 +153,22 @@ test('API: man of the match and match report', async () => {
   assert.equal((await call('PUT', '/api/matches/1', { motm: 'Messi' })).status, 400);
   assert.equal((await call('PUT', '/api/matches/1', { report: 'x'.repeat(2001) })).status, 400);
   assert.equal((await call('PUT', '/api/matches/1', { motm: null })).status, 200);
+});
+
+test('API: best defender award and goal assists', async () => {
+  assert.equal((await call('PUT', '/api/matches/1', { bestDefender: 'Iyke' })).status, 200);
+  let s = await (await fetch(`${base}/api/state`)).json();
+  assert.equal(s.matches[0].bestDefender, 'Iyke');
+  assert.equal((await call('PUT', '/api/matches/1', { bestDefender: 'Messi' })).status, 400);
+  assert.equal((await call('PUT', '/api/matches/1', { bestDefender: null })).status, 200);
+
+  const res = await call('POST', '/api/matches/1/events', { type: 'goal', team: 'A', player: 'Theo', assist: 'Ugo' });
+  assert.equal(res.status, 200);
+  s = await res.json();
+  const ev = s.matches[0].events.at(-1);
+  assert.equal(ev.assist, 'Ugo');
+  assert.equal((await call('POST', '/api/matches/1/events', { type: 'goal', team: 'A', player: 'Theo', assist: 'Theo' })).status, 400);
+  await call('DELETE', `/api/matches/1/events/${ev.id}`);
 });
 
 test('API: photo upload accepts real images only and serves them back', async () => {

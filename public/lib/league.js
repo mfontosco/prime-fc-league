@@ -38,7 +38,7 @@ export function normalizeState(state) {
   return {
     ...state,
     matches: migrateFixtures(state.matches).map((m) => ({
-      events: [], motm: null, report: '', photos: [], ...m,
+      events: [], motm: null, bestDefender: null, report: '', photos: [], ...m,
     })),
     pots: state.pots ?? structuredClone(DEFAULT_POTS),
     draw: state.draw ?? null,
@@ -84,9 +84,9 @@ export function matchPlayers(state, match) {
 
 /**
  * Validate a match event. Returns an error message, or null when valid.
- * Event: { type: 'goal'|'yellow'|'red', team, player, ownGoal? }.
+ * Event: { type: 'goal'|'yellow'|'red', team, player, ownGoal?, assist? }.
  * `team` is the side credited: the scoring side for goals (including own goals),
- * the offending side for cards.
+ * the offending side for cards. `assist` is the teammate who set up a goal.
  */
 export function validateEvent(state, match, ev) {
   if (!ev || !EVENT_TYPES.includes(ev.type)) return 'Event type must be goal, yellow or red';
@@ -94,6 +94,12 @@ export function validateEvent(state, match, ev) {
   if (!allPlayers(state).includes(ev.player)) return 'Unknown player';
   if (ev.ownGoal !== undefined && typeof ev.ownGoal !== 'boolean') return 'ownGoal must be true or false';
   if (ev.ownGoal && ev.type !== 'goal') return 'Only goals can be own goals';
+  if (ev.assist !== undefined && ev.assist !== null) {
+    if (ev.type !== 'goal' || ev.ownGoal) return 'Only goals can have an assist';
+    if (!allPlayers(state).includes(ev.assist)) return 'Unknown assist player';
+    if (ev.assist === ev.player) return 'A player cannot assist their own goal';
+    if (state.draw && teamOf(state, ev.assist) !== ev.team) return 'The assist must come from the scoring team';
+  }
   if (state.draw) {
     const other = ev.team === match.home ? match.away : match.home;
     const expected = ev.ownGoal ? other : ev.team;
@@ -114,21 +120,24 @@ export function recordedGoals(match) {
 }
 
 /**
- * Per-player season stats: goals (own goals excluded), cards and man-of-the-match awards.
+ * Per-player season stats: goals (own goals excluded), assists, cards, and man-of-the-match
+ * and best-defender awards.
  * Only players with at least one entry are returned, top scorers first.
  */
 export function playerStats(state) {
   const rows = new Map();
   const row = (player) => {
-    if (!rows.has(player)) rows.set(player, { player, team: teamOf(state, player), goals: 0, ownGoals: 0, yellow: 0, red: 0, motm: 0 });
+    if (!rows.has(player)) rows.set(player, { player, team: teamOf(state, player), goals: 0, ownGoals: 0, assists: 0, yellow: 0, red: 0, motm: 0, bestDefender: 0 });
     return rows.get(player);
   };
   for (const m of state.matches) {
     for (const e of m.events) {
       if (e.type === 'goal') row(e.player)[e.ownGoal ? 'ownGoals' : 'goals']++;
       else row(e.player)[e.type]++;
+      if (e.assist) row(e.assist).assists++;
     }
     if (m.motm) row(m.motm).motm++;
+    if (m.bestDefender) row(m.bestDefender).bestDefender++;
   }
   return [...rows.values()].sort((a, b) => b.goals - a.goals || b.motm - a.motm || a.player.localeCompare(b.player));
 }

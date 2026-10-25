@@ -130,6 +130,8 @@ function shareText(status, names) {
   }
   const top = playerStats(state).find((r) => r.goals > 0);
   if (top) lines.push('', `⚽ Top scorer: ${top.player} (${top.goals})`);
+  const topAssist = [...playerStats(state)].sort((a, b) => b.assists - a.assists).find((r) => r.assists > 0);
+  if (topAssist) lines.push(`🎯 Top assists: ${topAssist.player} (${topAssist.assists})`);
   lines.push('', `${status.played}/${status.total} matches played`, location.origin);
   return lines.join('\n');
 }
@@ -163,7 +165,10 @@ function renderStats(names) {
       : h('p', { class: 'empty' }, empty));
 
   const scorers = stats.filter((r) => r.goals > 0);
-  const motm = stats.filter((r) => r.motm > 0).sort((a, b) => b.motm - a.motm || a.player.localeCompare(b.player));
+  const awards = (key) => stats.filter((r) => r[key] > 0).sort((a, b) => b[key] - a[key] || a.player.localeCompare(b.player));
+  const assists = awards('assists');
+  const motm = awards('motm');
+  const defenders = awards('bestDefender');
   const cards = stats.filter((r) => r.yellow || r.red).sort((a, b) => b.red - a.red || b.yellow - a.yellow);
 
   $('stats').replaceChildren(
@@ -172,10 +177,20 @@ function renderStats(names) {
       { label: 'Team', cls: 'muted', value: teamLabel },
       { label: 'Goals', cls: 'num', value: (r) => r.goals },
     ], 'No goals recorded yet.'),
+    block('🎯 Top assists', assists, [
+      { label: 'Player', head: true, value: (r) => r.player },
+      { label: 'Team', cls: 'muted', value: teamLabel },
+      { label: 'Assists', cls: 'num', value: (r) => r.assists },
+    ], 'No assists recorded yet.'),
     block('⭐ Man of the match', motm, [
       { label: 'Player', head: true, value: (r) => r.player },
       { label: 'Team', cls: 'muted', value: teamLabel },
       { label: 'Awards', cls: 'num', value: (r) => r.motm },
+    ], 'No awards yet.'),
+    block('🛡️ Best defender', defenders, [
+      { label: 'Player', head: true, value: (r) => r.player },
+      { label: 'Team', cls: 'muted', value: teamLabel },
+      { label: 'Awards', cls: 'num', value: (r) => r.bestDefender },
     ], 'No awards yet.'),
     block('🟨 Discipline', cards, [
       { label: 'Player', head: true, value: (r) => r.player },
@@ -305,7 +320,7 @@ function renderFixtures(names) {
 }
 
 function eventLabel(e) {
-  if (e.type === 'goal') return `⚽ ${e.player}${e.ownGoal ? ' (og)' : ''}`;
+  if (e.type === 'goal') return `⚽ ${e.player}${e.ownGoal ? ' (og)' : ''}${e.assist ? ` (assist: ${e.assist})` : ''}`;
   return `${e.type === 'red' ? '🟥' : '🟨'} ${e.player}`;
 }
 
@@ -315,6 +330,7 @@ function matchExtras(m) {
   const parts = [];
   if (m.events.length) parts.push(h('div', { class: 'events-row' }, side(m.home), side(m.away)));
   if (m.motm) parts.push(h('p', { class: 'motm' }, '⭐ Man of the match: ', h('strong', {}, m.motm)));
+  if (m.bestDefender) parts.push(h('p', { class: 'motm' }, '🛡️ Best defender: ', h('strong', {}, m.bestDefender)));
   if (m.report) parts.push(h('p', { class: 'report' }, m.report));
   if (m.photos.length) {
     parts.push(h('div', { class: 'photos' }, m.photos.map((p) => h('a', { href: `/uploads/${p}`, target: '_blank', rel: 'noopener' },
@@ -391,6 +407,9 @@ function matchDetailsAdmin(m, names) {
     h('option', { value: 'goal' }, '⚽ Goal'), h('option', { value: 'og' }, '⚽ Own goal'),
     h('option', { value: 'yellow' }, '🟨 Yellow card'), h('option', { value: 'red' }, '🟥 Red card'));
   const playerSel = playerSelect(players, names, 'Player');
+  // Assists only apply to normal goals.
+  const assistSel = playerSelect(players, names, 'Assist (optional)');
+  typeSel.addEventListener('change', () => { assistSel.hidden = typeSel.value !== 'goal'; });
   const teamSel = state.draw ? null : h('select', { 'aria-label': 'Credited to' },
     [m.home, m.away].map((t) => h('option', { value: t }, names.get(t))));
   const addEvent = async (e) => {
@@ -400,16 +419,18 @@ function matchDetailsAdmin(m, names) {
     const ownGoal = typeSel.value === 'og';
     let team = teamSel?.value;
     if (state.draw) team = ownGoal ? other(teamOf(state, player)) : teamOf(state, player);
-    await send('POST', `/api/matches/${m.id}/events`, { type: ownGoal ? 'goal' : typeSel.value, team, player, ownGoal }, 'Added');
+    const assist = typeSel.value === 'goal' ? assistSel.value || null : null;
+    await send('POST', `/api/matches/${m.id}/events`, { type: ownGoal ? 'goal' : typeSel.value, team, player, ownGoal, assist }, 'Added');
   };
 
   // MOTM + report
   const motmSel = playerSelect(players, names, 'Man of the match', m.motm);
+  const defenderSel = playerSelect(players, names, 'Best defender', m.bestDefender);
   const reportIn = h('textarea', { rows: '3', maxlength: String(MAX_REPORT), placeholder: 'Match report (optional)', 'aria-label': 'Match report' });
   reportIn.value = m.report;
   const saveDetails = (e) => {
     e.preventDefault();
-    send('PUT', `/api/matches/${m.id}`, { motm: motmSel.value || null, report: reportIn.value }, 'Details saved');
+    send('PUT', `/api/matches/${m.id}`, { motm: motmSel.value || null, bestDefender: defenderSel.value || null, report: reportIn.value }, 'Details saved');
   };
 
   // Photos
@@ -426,10 +447,11 @@ function matchDetailsAdmin(m, names) {
       h('h4', {}, 'Goals & cards'),
       eventsList,
       mismatch ? h('p', { class: 'warn' }, `Recorded goals (${rec.home}–${rec.away}) don't match the score (${m.homeGoals}–${m.awayGoals}).`) : null,
-      h('form', { class: 'inline-form', onsubmit: addEvent }, typeSel, playerSel, teamSel, h('button', { type: 'submit', class: 'btn primary' }, 'Add'))),
+      h('form', { class: 'inline-form', onsubmit: addEvent }, typeSel, playerSel, assistSel, teamSel, h('button', { type: 'submit', class: 'btn primary' }, 'Add'))),
     h('form', { class: 'detail-section', onsubmit: saveDetails },
-      h('h4', {}, 'Man of the match & report'),
+      h('h4', {}, 'Awards & report'),
       motmSel,
+      defenderSel,
       reportIn,
       h('button', { type: 'submit', class: 'btn primary' }, 'Save details')),
     h('div', { class: 'detail-section' }, h('h4', {}, `Photos (${m.photos.length}/${MAX_PHOTOS})`), photos));
