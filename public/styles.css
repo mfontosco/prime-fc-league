@@ -172,6 +172,10 @@ details summary h2 { margin: 0; }
 #admin-area { display: flex; align-items: center; gap: 10px; }
 .login { display: flex; gap: 8px; }
 .login input { width: 9em; }
+.pin-field { position: relative; display: inline-flex; }
+.pin-field input { padding-right: 3.6em; width: 11em; }
+.pin-toggle { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); padding: 4px 8px; border: 0; border-radius: 6px; background: transparent; color: var(--muted); font: inherit; font-size: 0.8rem; font-weight: 600; cursor: pointer; }
+.pin-toggle:hover, .pin-toggle:focus-visible { color: var(--text); background: var(--pitch-700); }
 .admin-badge { color: var(--gold); font-weight: 700; font-size: 0.8rem; letter-spacing: 0.1em; text-transform: uppercase; }
 
 .toast {

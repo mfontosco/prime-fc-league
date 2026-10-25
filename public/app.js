@@ -564,6 +564,14 @@ function renderAdminArea() {
     return;
   }
   const pinIn = h('input', { type: 'password', placeholder: 'Admin PIN', autocomplete: 'current-password', 'aria-label': 'Admin PIN', required: true });
+  const toggle = h('button', { type: 'button', class: 'pin-toggle', 'aria-label': 'Show PIN', 'aria-pressed': 'false', onclick: () => {
+    const show = pinIn.type === 'password';
+    pinIn.type = show ? 'text' : 'password';
+    toggle.textContent = show ? 'Hide' : 'Show';
+    toggle.setAttribute('aria-label', show ? 'Hide PIN' : 'Show PIN');
+    toggle.setAttribute('aria-pressed', String(show));
+    pinIn.focus();
+  } }, 'Show');
   const form = h('form', { class: 'login', hidden: true, onsubmit: async (e) => {
     e.preventDefault();
     try {
@@ -577,7 +585,7 @@ function renderAdminArea() {
       toast(err.message, 'error');
       pinIn.select();
     }
-  } }, pinIn, h('button', { type: 'submit', class: 'btn primary' }, 'Enter'));
+  } }, h('span', { class: 'pin-field' }, pinIn, toggle), h('button', { type: 'submit', class: 'btn primary' }, 'Enter'));
   const open = h('button', { class: 'btn ghost small', onclick: () => { open.hidden = true; form.hidden = false; pinIn.focus(); } }, 'Admin');
   area.replaceChildren(open, form);
 }
