@@ -1,5 +1,5 @@
 import {
-  leagueStatus, isPlayed, playerStats, recordedGoals, matchPlayers, squadOf, teamOf, allPlayers, matchdays,
+  leagueStatus, isPlayed, playerStats, pointsTable, playersOfMatchday, PLAYER_POINTS, recordedGoals, matchPlayers, squadOf, teamOf, allPlayers, matchdays,
   MAX_REPORT, MAX_PHOTOS,
 } from '/lib/league.js';
 import { matchdayReportHtml } from '/lib/report.js';
@@ -14,6 +14,7 @@ let confirmingRedraw = false;
 let editingSquads = false;
 let availDate = null;
 const openDetails = new Set(); // match ids whose admin details panel is open, kept across re-renders
+const openDayStats = new Set(); // matchday dates whose player-stats panel is open
 
 function safeGet(key) {
   try { return sessionStorage.getItem(key); } catch { return null; }
@@ -134,6 +135,8 @@ function shareText(status, names) {
   if (top) lines.push('', `⚽ Top scorer: ${top.player} (${top.goals})`);
   const topAssist = [...playerStats(state)].sort((a, b) => b.assists - a.assists).find((r) => r.assists > 0);
   if (topAssist) lines.push(`🎯 Top assists: ${topAssist.player} (${topAssist.assists})`);
+  const topPoints = pointsTable(state)[0];
+  if (topPoints?.points > 0) lines.push(`🏅 Player of the Season race: ${topPoints.player} (${topPoints.points} pts)`);
   lines.push('', `${status.played}/${status.total} matches played`, location.origin);
   return lines.join('\n');
 }
@@ -166,6 +169,9 @@ function renderStats(names) {
         h('tbody', {}, rows.map((r) => h('tr', {}, cols.map((c) => h(c.head ? 'th' : 'td', { class: c.cls || '', ...(c.head ? { scope: 'row' } : {}) }, c.value(r)))))))
       : h('p', { class: 'empty' }, empty));
 
+  const ranked = pointsTable(state).filter((r) => r.points !== 0);
+  const motds = matchdays(state).map((date, i) => ({ date, day: i + 1, winners: playersOfMatchday(state, date) }))
+    .filter((d) => d.winners.length);
   const scorers = stats.filter((r) => r.goals > 0);
   const awards = (key) => stats.filter((r) => r[key] > 0).sort((a, b) => b[key] - a[key] || a.player.localeCompare(b.player));
   const assists = awards('assists');
@@ -174,6 +180,16 @@ function renderStats(names) {
   const cards = stats.filter((r) => r.yellow || r.red).sort((a, b) => b.red - a.red || b.yellow - a.yellow);
 
   $('stats').replaceChildren(
+    block('🏅 Player of the Season', ranked, [
+      { label: 'Player', head: true, value: (r) => r.player },
+      { label: 'Team', cls: 'muted', value: teamLabel },
+      { label: 'Pts', cls: 'num strong', value: (r) => r.points },
+    ], 'No points yet.'),
+    block('⭐ Player of the Matchday', motds, [
+      { label: 'Day', cls: 'muted', value: (d) => `MD${d.day}` },
+      { label: 'Player', head: true, value: (d) => d.winners.map((w) => w.player).join(' & ') },
+      { label: 'Pts', cls: 'num', value: (d) => d.winners[0].points },
+    ], 'Awarded after the first matchday.'),
     block('⚽ Top scorers', scorers, [
       { label: 'Player', head: true, value: (r) => r.player },
       { label: 'Team', cls: 'muted', value: teamLabel },
@@ -200,7 +216,38 @@ function renderStats(names) {
       { label: '🟨', cls: 'num', value: (r) => r.yellow },
       { label: '🟥', cls: 'num', value: (r) => r.red },
     ], 'No cards. Clean game so far.'),
+    h('p', { class: 'note points-key' }, pointsKey()),
   );
+}
+
+function pointsKey() {
+  const P = PLAYER_POINTS;
+  const n = (v) => (v > 0 ? `+${v}` : `−${-v}`);
+  return `Points: goal ${n(P.goal)} · assist ${n(P.assist)} · man of the match ${n(P.motm)} · best defender ${n(P.bestDefender)} · `
+    + `yellow ${n(P.yellow)} · red ${n(P.red)} · own goal ${n(P.ownGoal)}`;
+}
+
+/** Collapsible per-player breakdown for one matchday. */
+function matchdayStats(date) {
+  const rows = pointsTable(state, { date });
+  if (!rows.length) return null;
+  const top = new Set(playersOfMatchday(state, date).map((r) => r.player));
+  const names = new Map(state.teams.map((t) => [t.id, t.name]));
+  const awards = (r) => `${'⭐'.repeat(r.motm)}${'🛡️'.repeat(r.bestDefender)}${'🟨'.repeat(r.yellow)}${'🟥'.repeat(r.red)}`;
+  const panel = h('details', { class: 'matchday-stats', open: openDayStats.has(date) },
+    h('summary', {}, `Player stats${top.size ? ` · ⭐ ${[...top].join(' & ')}` : ''}`),
+    h('table', { class: 'mini' },
+      h('thead', {}, h('tr', {},
+        h('th', { scope: 'col' }, 'Player'), h('th', { scope: 'col', class: 'muted' }, 'Team'),
+        h('th', { scope: 'col', class: 'num', title: 'Goals' }, 'G'), h('th', { scope: 'col', class: 'num', title: 'Assists' }, 'A'),
+        h('th', { scope: 'col' }, ''), h('th', { scope: 'col', class: 'num' }, 'Pts'))),
+      h('tbody', {}, rows.map((r) => h('tr', { class: top.has(r.player) ? 'leader' : '' },
+        h('th', { scope: 'row' }, r.player, r.ownGoals ? h('span', { class: 'muted' }, ` (${r.ownGoals} og)`) : null),
+        h('td', { class: 'muted' }, r.team ? names.get(r.team) : ''),
+        h('td', { class: 'num' }, r.goals), h('td', { class: 'num' }, r.assists),
+        h('td', {}, awards(r)), h('td', { class: 'num strong' }, r.points))))));
+  panel.addEventListener('toggle', () => (panel.open ? openDayStats.add(date) : openDayStats.delete(date)));
+  return panel;
 }
 
 function renderSquads(names) {
@@ -358,7 +405,8 @@ function renderFixtures(names) {
       matches.some(isPlayed)
         ? h('button', { type: 'button', class: 'btn ghost small', onclick: () => openMatchdayReport(date) }, '📄 Download PDF')
         : null),
-    h('ol', { class: 'matches' }, matches.map((m) => matchRow(m, names)))));
+    h('ol', { class: 'matches' }, matches.map((m) => matchRow(m, names))),
+    matchdayStats(date)));
   $('fixtures').replaceChildren(...groups);
 }
 

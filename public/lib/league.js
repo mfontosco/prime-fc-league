@@ -3,6 +3,8 @@
 // No I/O here, so everything is unit-testable.
 
 export const POINTS = { win: 3, draw: 1, loss: 0 };
+// Player points for the "Player of the Season" race, earned from what's recorded on each match.
+export const PLAYER_POINTS = { goal: 3, assist: 2, motm: 3, bestDefender: 2, yellow: -1, red: -3, ownGoal: -1 };
 export const TEAM_IDS = ['A', 'B', 'C'];
 export const MAX_GOALS = 99;
 
@@ -128,17 +130,18 @@ export function recordedGoals(match) {
 }
 
 /**
- * Per-player season stats: goals (own goals excluded), assists, cards, and man-of-the-match
- * and best-defender awards.
- * Only players with at least one entry are returned, top scorers first.
+ * Per-player stats: goals (own goals excluded), assists, cards, man-of-the-match and
+ * best-defender awards, and player points (PLAYER_POINTS). Season totals by default, or one
+ * matchday with `{ date }`. Only players with at least one entry are returned, top scorers first.
  */
-export function playerStats(state) {
+export function playerStats(state, { date } = {}) {
   const rows = new Map();
   const row = (player) => {
     if (!rows.has(player)) rows.set(player, { player, team: teamOf(state, player), goals: 0, ownGoals: 0, assists: 0, yellow: 0, red: 0, motm: 0, bestDefender: 0 });
     return rows.get(player);
   };
   for (const m of state.matches) {
+    if (date && m.date !== date) continue;
     for (const e of m.events) {
       if (e.type === 'goal') row(e.player)[e.ownGoal ? 'ownGoals' : 'goals']++;
       else row(e.player)[e.type]++;
@@ -147,7 +150,27 @@ export function playerStats(state) {
     if (m.motm) row(m.motm).motm++;
     if (m.bestDefender) row(m.bestDefender).bestDefender++;
   }
+  for (const r of rows.values()) r.points = playerPoints(r);
   return [...rows.values()].sort((a, b) => b.goals - a.goals || b.motm - a.motm || a.player.localeCompare(b.player));
+}
+
+/** Points for one stats row. */
+export function playerPoints(r) {
+  const P = PLAYER_POINTS;
+  return r.goals * P.goal + r.assists * P.assist + r.motm * P.motm + r.bestDefender * P.bestDefender
+    + r.yellow * P.yellow + r.red * P.red + r.ownGoals * P.ownGoal;
+}
+
+/** Stats rows ranked by points (then goals, assists, name): the Player of the Season race. */
+export function pointsTable(state, opts) {
+  return playerStats(state, opts).sort((a, b) => b.points - a.points || b.goals - a.goals || b.assists - a.assists || a.player.localeCompare(b.player));
+}
+
+/** The top points scorer(s) of one matchday; [] when nobody scored any positive points. */
+export function playersOfMatchday(state, date) {
+  const rows = pointsTable(state, { date });
+  const best = rows[0]?.points ?? 0;
+  return best > 0 ? rows.filter((r) => r.points === best) : [];
 }
 
 /** Unique matchday dates, in order. */

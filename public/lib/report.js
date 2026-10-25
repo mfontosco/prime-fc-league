@@ -2,7 +2,7 @@
 // Returns a self-contained HTML document; the browser's print dialog turns it into a PDF.
 // Pure string building, shared by the browser and the tests.
 
-import { computeStandings, isPlayed, matchdays } from './league.js';
+import { computeStandings, isPlayed, matchdays, pointsTable, playersOfMatchday, PLAYER_POINTS } from './league.js';
 
 const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const signed = (n) => (n > 0 ? `+${n}` : String(n));
@@ -56,6 +56,20 @@ export function matchdayReportHtml(state, date, { origin = '' } = {}) {
     <td>${r.played}</td><td>${r.won}</td><td>${r.drawn}</td><td>${r.lost}</td>
     <td>${r.gf}</td><td>${r.ga}</td><td>${signed(r.gd)}</td><td class="pts">${r.points}</td></tr>`).join('');
   const title = `PRIME FC Matchday ${day} · ${longDate(date)}`;
+  const players = pointsTable(state, { date });
+  const stars = playersOfMatchday(state, date);
+  const playerRows = players.map((r) => `<tr${stars.some((s) => s.player === r.player) ? ' class="star"' : ''}>
+    <th>${esc(r.player)}${r.ownGoals ? ` <span class="muted">(${r.ownGoals} og)</span>` : ''}</th><td class="muted">${esc(names.get(r.team) ?? '')}</td>
+    <td>${r.goals}</td><td>${r.assists}</td><td>${r.motm ? '⭐'.repeat(r.motm) : ''}${r.bestDefender ? '🛡️'.repeat(r.bestDefender) : ''}${'🟨'.repeat(r.yellow)}${'🟥'.repeat(r.red)}</td>
+    <td class="pts">${r.points}</td></tr>`).join('');
+  const P = PLAYER_POINTS;
+  const playerSection = players.length ? `<h2>Player stats · Matchday ${day}</h2>
+${stars.length ? `<p class="motd">⭐ Player of the Matchday: <strong>${stars.map((s) => esc(s.player)).join(' &amp; ')}</strong> (${stars[0].points} pts)</p>` : ''}
+<table class="players">
+  <thead><tr><th>Player</th><th>Team</th><th>Goals</th><th>Assists</th><th>Awards &amp; cards</th><th>Pts</th></tr></thead>
+  <tbody>${playerRows}</tbody>
+</table>
+<p class="key">Points: goal +${P.goal} · assist +${P.assist} · man of the match +${P.motm} · best defender +${P.bestDefender} · yellow ${P.yellow} · red ${P.red} · own goal ${P.ownGoal}</p>` : '';
 
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
@@ -80,6 +94,8 @@ export function matchdayReportHtml(state, date, { origin = '' } = {}) {
   th, td { padding: 5px 6px; border-bottom: 1px solid #e3e8e5; text-align: center; }
   tbody th { text-align: left; } thead th { font-size: 11px; color: #667; text-transform: uppercase; }
   .pts { font-weight: 700; }
+  .players td:nth-child(2) { text-align: left; } tr.star { background: #fff6dc; }
+  .motd { margin: 0 0 8px; font-size: 14px; } .key { margin: 6px 0 0; font-size: 11px; color: #667; }
   footer { margin-top: 18px; font-size: 11px; color: #667; }
   .print-btn { margin: 12px 0 0; padding: 8px 14px; font: inherit; font-weight: 600; border: 0; border-radius: 6px; background: #0b3d2a; color: #fff; cursor: pointer; }
   @media print { .print-btn { display: none; } body { padding: 0; } }
@@ -92,6 +108,7 @@ export function matchdayReportHtml(state, date, { origin = '' } = {}) {
 </header>
 <h2>Results</h2>
 ${matches.map((m) => matchBlock(m, names)).join('\n')}
+${playerSection}
 <h2>League table after Matchday ${day}</h2>
 <table>
   <thead><tr><th>#</th><th>Team</th><th>P</th><th>W</th><th>D</th><th>L</th><th>GF</th><th>GA</th><th>GD</th><th>Pts</th></tr></thead>

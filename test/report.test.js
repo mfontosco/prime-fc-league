@@ -36,6 +36,8 @@ test('matchday report: results, goal details, awards and the table after that da
   assert.match(html, /Man of the match: <strong>Theo<\/strong>/);
   assert.match(html, /Best defender: <strong>Ugo<\/strong>/);
   assert.match(html, /League table after Matchday 1/);
+  assert.match(html, /Player stats · Matchday 1/);
+  assert.match(html, /Player of the Matchday: <strong>Theo<\/strong> \(6 pts\)/);
   assert.equal((html.match(/<tr>\s*<td>/g) || []).length, 3);
 });
 

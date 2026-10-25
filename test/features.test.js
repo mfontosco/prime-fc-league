@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
   createInitialState, normalizeState, validateEvent, playerStats, recordedGoals, squadOf, teamOf, validateSquads, DEFAULT_POTS,
+  pointsTable, playersOfMatchday,
 } from '../public/lib/league.js';
 import { createLeagueServer } from '../server.js';
 
@@ -104,6 +105,47 @@ test('playerStats: top scorers, own goals separate, cards and MOTM counted', () 
   assert.equal(by.Akpos.bestDefender, 1);
   assert.equal(by.Theo.bestDefender, 0);
   assert.deepEqual(recordedGoals(s.matches[0]), { home: 3, away: 1 });
+});
+
+test('player points: goal 3, assist 2, MOTM 3, best defender 2, yellow −1, red −3, own goal −1', () => {
+  const s = drawnState();
+  const [day1a, day1b] = s.matches.filter((m) => m.date === '2026-10-31');
+  const day2 = s.matches.find((m) => m.date === '2026-11-07');
+  day1a.events = [
+    { id: '1', type: 'goal', team: 'A', player: 'Theo', assist: 'Ugo' },
+    { id: '2', type: 'goal', team: 'A', player: 'Theo' },
+    { id: '3', type: 'yellow', team: 'A', player: 'Theo' },
+    { id: '4', type: 'goal', team: 'A', player: 'Iyke', ownGoal: true },
+    { id: '5', type: 'red', team: 'B', player: 'Akpos' },
+  ];
+  day1a.motm = 'Theo';
+  day1b.bestDefender = 'Ugo';
+  day2.events = [{ id: '6', type: 'goal', team: day2.home, player: 'Chuks' }];
+
+  const season = Object.fromEntries(pointsTable(s).map((r) => [r.player, r]));
+  assert.equal(season.Theo.points, 3 + 3 - 1 + 3);
+  assert.equal(season.Ugo.points, 2 + 2);
+  assert.equal(season.Iyke.points, -1);
+  assert.equal(season.Akpos.points, -3);
+  assert.equal(season.Chuks.points, 3);
+  assert.equal(pointsTable(s)[0].player, 'Theo');
+  assert.equal(pointsTable(s).at(-1).player, 'Akpos');
+
+  // One matchday only.
+  const day1 = pointsTable(s, { date: '2026-10-31' });
+  assert.ok(!day1.some((r) => r.player === 'Chuks'));
+  assert.deepEqual(playersOfMatchday(s, '2026-10-31').map((r) => r.player), ['Theo']);
+  assert.deepEqual(playersOfMatchday(s, '2026-11-07').map((r) => r.player), ['Chuks']);
+  assert.deepEqual(playersOfMatchday(s, '2026-11-14'), []);
+});
+
+test('player of the matchday: level players share it', () => {
+  const s = drawnState();
+  s.matches[0].events = [
+    { id: '1', type: 'goal', team: 'A', player: 'Theo' },
+    { id: '2', type: 'goal', team: 'B', player: 'Iyke' },
+  ];
+  assert.deepEqual(playersOfMatchday(s, s.matches[0].date).map((r) => r.player).sort(), ['Iyke', 'Theo']);
 });
 
 // The squads the team picked by hand for the 2026 season.
