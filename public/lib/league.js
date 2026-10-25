@@ -191,6 +191,37 @@ function buildFixtures(start = SEASON_START) {
   return matches;
 }
 
+/**
+ * Check manually picked squads ({ [teamId]: [player names] }) against the same rule as the draw:
+ * every team gets exactly one player from every pot. Returns { error } or { squads } in draw form.
+ */
+export function validateSquads(pots, teamIds, picked) {
+  if (!picked || typeof picked !== 'object') return { error: 'Squads are required' };
+  const potOf = new Map(pots.flatMap((p) => p.players.map((player) => [player, p.id])));
+  const used = new Set();
+  const squads = {};
+  for (const teamId of teamIds) {
+    const players = picked[teamId];
+    if (!Array.isArray(players) || players.length !== pots.length) {
+      return { error: `Team ${teamId} needs exactly ${pots.length} players, one from each pot` };
+    }
+    const seenPots = new Set();
+    squads[teamId] = [];
+    for (const player of players) {
+      const pot = potOf.get(player);
+      if (!pot) return { error: `Unknown player: ${player}` };
+      if (used.has(player)) return { error: `${player} is in more than one team` };
+      if (seenPots.has(pot)) return { error: `Team ${teamId} has two players from Pot ${pot}` };
+      used.add(player);
+      seenPots.add(pot);
+      squads[teamId].push({ pot, player });
+    }
+    squads[teamId].sort((a, b) => a.pot.localeCompare(b.pot));
+  }
+  if (Object.keys(picked).some((id) => !teamIds.includes(id))) return { error: 'Unknown team' };
+  return { squads };
+}
+
 /** Build the initial league state: 3 teams, a weekly fixture list, no results, pots not yet drawn. */
 export function createInitialState(start = SEASON_START) {
   const teams = TEAM_IDS.map((id) => ({ id, name: `Team ${id}` }));

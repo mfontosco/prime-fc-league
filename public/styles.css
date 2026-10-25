@@ -198,6 +198,8 @@ details summary h2 { margin: 0; }
 .squad ol { list-style: none; margin: 0; padding: 0; }
 .squad li { display: flex; justify-content: space-between; align-items: center; padding: 5px 0; border-top: 1px solid var(--line); font-weight: 500; }
 .squad li:first-child { border-top: 0; }
+.squad-editor .squad { display: grid; gap: 6px; align-content: start; }
+.squad-editor .draw-actions { margin-top: 10px; }
 .pot-tag { font-size: 0.7rem; font-weight: 700; color: var(--muted); border: 1px solid var(--line); border-radius: 6px; padding: 1px 6px; }
 .empty { margin: 0; color: var(--muted); }
 .draw-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 14px; }

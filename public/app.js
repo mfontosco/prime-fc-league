@@ -10,6 +10,7 @@ const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 let state = null;
 let adminPin = safeGet(PIN_KEY);
 let confirmingRedraw = false;
+let editingSquads = false;
 let availDate = null;
 const openDetails = new Set(); // match ids whose admin details panel is open, kept across re-renders
 
@@ -215,12 +216,15 @@ function renderSquads(names) {
       h('ol', {}, (draw.squads[t.id] || []).map(({ pot, player }) => h('li', {},
         h('span', {}, player),
         h('span', { class: 'pot-tag', title: `From Pot ${pot}` }, pot))))))));
-    parts.push(h('p', { class: 'note' }, `Drawn ${new Date(draw.drawnAt).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}. One player from each pot per team.`));
+    const when = new Date(draw.drawnAt).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' });
+    parts.push(h('p', { class: 'note' }, `${draw.manual ? 'Picked by hand' : 'Drawn'} ${when}. One player from each pot per team.`));
   } else {
     parts.push(h('p', { class: 'empty' }, 'Squads haven\'t been drawn yet. Each team will get one player from every pot.'));
   }
 
-  if (adminPin) {
+  if (adminPin && editingSquads) {
+    parts.push(squadEditor(names));
+  } else if (adminPin) {
     const actions = h('div', { class: 'draw-actions' });
     if (!draw) {
       actions.append(h('button', { class: 'btn primary', onclick: () => runDraw(false) }, 'Run the draw'));
@@ -232,9 +236,43 @@ function renderSquads(names) {
     } else {
       actions.append(h('button', { class: 'btn ghost', onclick: () => { confirmingRedraw = true; render(); } }, 'Redraw squads'));
     }
+    actions.append(h('button', { class: 'btn ghost', onclick: () => { editingSquads = true; render(); } }, 'Set squads manually'));
     parts.push(actions);
   }
   $('squads').replaceChildren(...parts);
+}
+
+/** Admin form: pick each team's player from every pot by hand. */
+function squadEditor(names) {
+  const current = (teamId, potId) => state.draw?.squads[teamId]?.find((e) => e.pot === potId)?.player ?? '';
+  const selects = new Map();
+  const columns = state.teams.map((t) => h('div', { class: 'squad' },
+    h('p', { class: 'squad-name' }, names.get(t.id)),
+    state.pots.map((p) => {
+      const sel = h('select', { 'aria-label': `${names.get(t.id)}: Pot ${p.id}` },
+        h('option', { value: '' }, `Pot ${p.id}…`),
+        p.players.map((player) => h('option', { value: player, selected: player === current(t.id, p.id) }, player)));
+      selects.set(`${t.id}:${p.id}`, sel);
+      return sel;
+    })));
+  const save = async (e) => {
+    e.preventDefault();
+    const squads = Object.fromEntries(state.teams.map((t) => [t.id, state.pots.map((p) => selects.get(`${t.id}:${p.id}`).value).filter(Boolean)]));
+    try {
+      state = await api('/api/squads', { method: 'PUT', body: JSON.stringify({ squads, replace: Boolean(state.draw) }) });
+      editingSquads = false;
+      toast('Squads saved');
+      render();
+    } catch (err) {
+      handleError(err);
+    }
+  };
+  return h('form', { class: 'squad-editor', onsubmit: save },
+    h('div', { class: 'squads' }, columns),
+    h('div', { class: 'draw-actions' },
+      state.draw ? h('span', { class: 'warn' }, 'Saving replaces the current squads.') : null,
+      h('button', { type: 'submit', class: 'btn primary' }, 'Save squads'),
+      h('button', { type: 'button', class: 'btn ghost', onclick: () => { editingSquads = false; render(); } }, 'Cancel')));
 }
 
 async function runDraw(redraw) {

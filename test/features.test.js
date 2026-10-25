@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
-  createInitialState, normalizeState, validateEvent, playerStats, recordedGoals, squadOf, teamOf,
+  createInitialState, normalizeState, validateEvent, playerStats, recordedGoals, squadOf, teamOf, validateSquads, DEFAULT_POTS,
 } from '../public/lib/league.js';
 import { createLeagueServer } from '../server.js';
 
@@ -104,6 +104,25 @@ test('playerStats: top scorers, own goals separate, cards and MOTM counted', () 
   assert.equal(by.Akpos.bestDefender, 1);
   assert.equal(by.Theo.bestDefender, 0);
   assert.deepEqual(recordedGoals(s.matches[0]), { home: 3, away: 1 });
+});
+
+// The squads the team picked by hand for the 2026 season.
+const PICKED = {
+  A: ['Theo', 'Ugo', 'Valencia', 'Obilinks', 'David', 'Favour'],
+  B: ['Iyke', 'Chinedu', 'Obigod', 'Okwelle', 'Joe', 'Korede'],
+  C: ['Chairman', 'Ororo', 'Chuks', 'Akpos', 'Olise', 'Lucky'],
+};
+
+test('validateSquads: accepts one player per pot per team, rejects anything else', () => {
+  const { squads, error } = validateSquads(DEFAULT_POTS, ['A', 'B', 'C'], PICKED);
+  assert.equal(error, undefined);
+  assert.deepEqual(squads.A.map((e) => e.pot), ['A', 'B', 'C', 'D', 'E', 'F']);
+  assert.equal(squads.A.find((e) => e.pot === 'E').player, 'David');
+  const swap = (team, i, player) => ({ ...PICKED, [team]: PICKED[team].map((p, j) => (j === i ? player : p)) });
+  assert.match(validateSquads(DEFAULT_POTS, ['A', 'B', 'C'], swap('A', 4, 'Joe')).error, /more than one team/);
+  assert.match(validateSquads(DEFAULT_POTS, ['A', 'B', 'C'], swap('A', 4, 'Korede')).error, /two players from Pot F/);
+  assert.match(validateSquads(DEFAULT_POTS, ['A', 'B', 'C'], swap('A', 0, 'Messi')).error, /Unknown player/);
+  assert.match(validateSquads(DEFAULT_POTS, ['A', 'B', 'C'], { ...PICKED, A: PICKED.A.slice(0, 5) }).error, /exactly 6/);
 });
 
 // ---------- API ----------
@@ -207,4 +226,18 @@ test('API: anyone can mark availability, with validation', async () => {
   assert.equal((await call('PUT', '/api/availability', { date: '2026-10-31', player: 'Lucky', status: 'perhaps' }, { pin: null })).status, 400);
   const cleared = await call('PUT', '/api/availability', { date: '2026-10-31', player: 'Lucky', status: null }, { pin: null });
   assert.equal((await cleared.json()).availability['2026-10-31'].Lucky, undefined);
+});
+
+// Runs last: it sets squads, which changes event validation for the shared server.
+test('API: squads can be set by hand (admin only, confirm to replace)', async () => {
+  assert.equal((await call('PUT', '/api/squads', { squads: PICKED }, { pin: null })).status, 401);
+  assert.equal((await call('PUT', '/api/squads', { squads: { ...PICKED, A: PICKED.B } })).status, 400);
+  const res = await call('PUT', '/api/squads', { squads: PICKED });
+  assert.equal(res.status, 200);
+  const s = await res.json();
+  assert.equal(s.draw.manual, true);
+  assert.equal(teamOf(s, 'David'), 'A');
+  assert.equal(teamOf(s, 'Joe'), 'B');
+  assert.equal((await call('PUT', '/api/squads', { squads: PICKED })).status, 409);
+  assert.equal((await call('PUT', '/api/squads', { squads: PICKED, replace: true })).status, 200);
 });

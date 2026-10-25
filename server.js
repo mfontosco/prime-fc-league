@@ -9,7 +9,7 @@ import { timingSafeEqual, createHash, randomInt, randomBytes, randomUUID } from 
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  createInitialState, normalizeState, drawSquads, isValidScore, isValidDate,
+  createInitialState, normalizeState, drawSquads, validateSquads, isValidScore, isValidDate,
   validateEvent, matchPlayers, allPlayers, matchdays, AVAILABILITY, MAX_REPORT, MAX_PHOTOS,
 } from './public/lib/league.js';
 import { createFileStore, storeFromEnv, ConflictError } from './src/storage.js';
@@ -227,6 +227,18 @@ export function createLeagueServer({ store, dataFile, adminPin }) {
       if (s.draw && redraw !== true) return send(res, 409, { error: 'Squads already drawn. Confirm a redraw to replace them.' });
       const { squads } = drawSquads(s.pots, s.teams.map((t) => t.id), randomInt);
       s.draw = { drawnAt: new Date().toISOString(), squads };
+      await persist();
+      return send(res, 200, s);
+    }
+
+    // Squads picked by hand instead of drawn; same one-player-per-pot rule.
+    if (url.pathname === '/api/squads' && req.method === 'PUT') {
+      if (!requireAdmin(req, res)) return;
+      const { squads: picked, replace } = await readBody(req);
+      if (s.draw && replace !== true) return send(res, 409, { error: 'Squads are already set. Confirm to replace them.' });
+      const { squads, error } = validateSquads(s.pots, s.teams.map((t) => t.id), picked);
+      if (error) return send(res, 400, { error });
+      s.draw = { drawnAt: new Date().toISOString(), squads, manual: true };
       await persist();
       return send(res, 200, s);
     }

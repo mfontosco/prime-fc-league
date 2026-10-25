@@ -40,6 +40,8 @@ Anyone with the link can view. Click **Admin** in the footer and enter the PIN t
 
 The 18 players are split into 6 pots of 3 (`DEFAULT_POTS` in `public/lib/league.js`). The draw gives each team one player from every pot, so each squad has 6 players. It uses `crypto.randomInt` on the server and is saved with a timestamp. Redrawing needs an explicit confirmation, so a published draw is never overwritten by accident.
 
+Squads can also be picked by hand: in admin mode, **Set squads manually** lets you choose each team's player from every pot. The same one-player-per-pot rule is checked, and replacing existing squads needs confirmation.
+
 To change the pot list before the draw, edit `DEFAULT_POTS`. If `data/league.json` already exists, edit its `pots` field instead.
 
 ## Match day features
