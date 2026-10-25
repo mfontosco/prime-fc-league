@@ -29,7 +29,7 @@ Anyone with the link can view. Click **Admin** in the footer and enter the PIN t
 ## League rules implemented
 
 - 3 teams, a full round every Saturday from 31 Oct to 19 Dec 2026: 8 matchdays, 24 matches, 16 per team, 2 per team per matchday.
-- Fixture order each week: A v B, C v A, B v C. Home and away swap every other week.
+- Fixture order follows A v B → C v A → B v C, starting one pairing later each week so a different pairing kicks off. Home and away swap every other week.
 - Strictly a league: no final. Dec 19 is the last matchday.
 - Win 3 · Draw 1 · Loss 0.
 - Ranking: points → goal difference → head-to-head (mini-table of matches between the tied teams: h2h points, h2h goal difference, h2h goals scored).

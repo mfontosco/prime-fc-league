@@ -19,7 +19,7 @@ const order = (table) => table.map((r) => r.id).join('');
 test('fixtures follow the rules: a full round every Saturday, 31 Oct – 19 Dec, home and away alternating', () => {
   const { matches } = createInitialState();
   assert.equal(matches.length, 24);
-  assert.deepEqual(matches.slice(0, 6).map((m) => `${m.home}-${m.away}`), ['A-B', 'C-A', 'B-C', 'B-A', 'A-C', 'C-B']);
+  assert.deepEqual(matches.slice(0, 6).map((m) => `${m.home}-${m.away}`), ['A-B', 'C-A', 'B-C', 'A-C', 'C-B', 'B-A']);
   const days = [...new Set(matches.map((m) => m.date))];
   assert.deepEqual(days, ['2026-10-31', '2026-11-07', '2026-11-14', '2026-11-21', '2026-11-28', '2026-12-05', '2026-12-12', '2026-12-19']);
   for (const day of days) {
@@ -35,6 +35,42 @@ test('fixtures follow the rules: a full round every Saturday, 31 Oct – 19 Dec,
     assert.equal(matches.filter((m) => m.home === id).length, 8);
   }
   assert.deepEqual(matches.map((m) => m.id), matches.map((_, i) => i + 1));
+});
+
+test('kick-off order rotates: a different pairing opens each week', () => {
+  const { matches } = createInitialState();
+  const openers = [...new Set(matches.map((m) => m.date))].map((d) => matches.find((m) => m.date === d));
+  assert.deepEqual(openers.map((m) => `${m.home}-${m.away}`), ['A-B', 'A-C', 'B-C', 'B-A', 'C-A', 'C-B', 'A-B', 'A-C']);
+  const pair = (m) => [m.home, m.away].sort().join('');
+  for (let i = 1; i < openers.length; i++) assert.notEqual(pair(openers[i]), pair(openers[i - 1]));
+  // Every pairing still meets 8 times, 4 at each home.
+  for (const [x, y] of [['A', 'B'], ['B', 'C'], ['C', 'A']]) {
+    assert.equal(matches.filter((m) => m.home === x && m.away === y).length, 4);
+    assert.equal(matches.filter((m) => m.home === y && m.away === x).length, 4);
+  }
+});
+
+test('untouched weekly saves pick up the rotating order and keep changed dates', () => {
+  // A save from before the rotation: every round in the same A-B, C-A, B-C order.
+  const old = createInitialState();
+  delete old.fixturesVersion;
+  old.matches = old.matches.map((m) => ({ ...m }));
+  for (const m of old.matches) {
+    const i = (m.id - 1) % 3;
+    const pairs = [['A', 'B'], ['C', 'A'], ['B', 'C']];
+    [m.home, m.away] = m.round % 2 ? pairs[i] : [...pairs[i]].reverse();
+  }
+  old.matches.filter((m) => m.round === 2).forEach((m) => { m.date = '2026-11-08'; });
+  const migrated = normalizeState(old);
+  assert.equal(migrated.matches[3].home, 'A');
+  assert.equal(migrated.matches[3].away, 'C');
+  assert.ok(migrated.matches.filter((m) => m.round === 2).every((m) => m.date === '2026-11-08'));
+
+  // Once anything is recorded, the existing order is left alone.
+  old.matches[0].homeGoals = 1; old.matches[0].awayGoals = 0;
+  const kept = normalizeState(old);
+  assert.equal(kept.matches[3].home, 'B');
+  assert.equal(kept.matches[0].homeGoals, 1);
 });
 
 test('old 2-matchday saves move to the weekly schedule only while nothing is recorded', () => {

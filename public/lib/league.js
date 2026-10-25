@@ -7,7 +7,8 @@ export const TEAM_IDS = ['A', 'B', 'C'];
 export const MAX_GOALS = 99;
 
 // Fixture progression from the rules: A v B, C v A, B v C.
-// One full round every Saturday; home and away swap each week.
+// One full round every Saturday; home and away swap each week, and the progression
+// starts one pairing later each week so A v B doesn't always kick off.
 const ROUND = [
   ['A', 'B'],
   ['C', 'A'],
@@ -17,6 +18,8 @@ const ROUND = [
 // Every Saturday from 31 Oct to 19 Dec 2026. Strictly a league: no final.
 export const SEASON_START = '2026-10-31';
 export const ROUNDS = 8;
+// Bump when the generated schedule changes, so untouched saves pick up the new one.
+const FIXTURES_VERSION = 2;
 
 // Official Prime FC pot list. Each team gets exactly one player from every pot.
 export const DEFAULT_POTS = [
@@ -37,7 +40,8 @@ export const MAX_PHOTOS = 6;
 export function normalizeState(state) {
   return {
     ...state,
-    matches: migrateFixtures(state.matches).map((m) => ({
+    fixturesVersion: FIXTURES_VERSION,
+    matches: migrateFixtures(state).map((m) => ({
       events: [], motm: null, bestDefender: null, report: '', photos: [], ...m,
     })),
     pots: state.pots ?? structuredClone(DEFAULT_POTS),
@@ -47,13 +51,17 @@ export function normalizeState(state) {
 }
 
 /**
- * Saves from the original 2-matchday format (6 matches with `leg`) get the weekly schedule,
- * but only while nothing has been recorded on them, so no result is ever thrown away.
+ * Saves made with an older schedule (the original 2-matchday format, or weekly rounds before the
+ * rotating kick-off order) get the current one, but only while nothing has been recorded on any
+ * match, so no result is ever thrown away. Matchday dates changed by the admin are kept.
  */
-function migrateFixtures(matches) {
-  if (!matches.some((m) => 'leg' in m)) return matches;
-  const untouched = matches.every((m) => !isPlayed(m) && !m.events?.length && !m.motm && !m.report && !m.photos?.length);
-  return untouched ? buildFixtures() : matches.map(({ leg, ...m }) => ({ round: leg, ...m }));
+function migrateFixtures(state) {
+  const { matches } = state;
+  if (state.fixturesVersion === FIXTURES_VERSION) return matches;
+  const untouched = matches.every((m) => !isPlayed(m) && !m.events?.length && !m.motm && !m.bestDefender && !m.report && !m.photos?.length);
+  if (!untouched) return matches.map(({ leg, ...m }) => ({ round: m.round ?? leg, ...m }));
+  const roundDates = new Map(matches.filter((m) => m.round).map((m) => [m.round, m.date]));
+  return buildFixtures().map((m) => ({ ...m, date: roundDates.get(m.round) ?? m.date }));
 }
 
 // ---------- Players ----------
@@ -178,12 +186,16 @@ function addDays(date, days) {
   return d.toISOString().slice(0, 10);
 }
 
-/** One full round per week for ROUNDS weeks; even rounds reverse home and away. */
+/**
+ * One full round per week for ROUNDS weeks. Even rounds reverse home and away, and each round
+ * starts the A v B → C v A → B v C progression one pairing later, rotating who kicks off.
+ */
 function buildFixtures(start = SEASON_START) {
   const matches = [];
   for (let round = 1; round <= ROUNDS; round++) {
     const date = addDays(start, (round - 1) * 7);
-    for (const [home, away] of ROUND) {
+    const shift = (round - 1) % ROUND.length;
+    for (const [home, away] of [...ROUND.slice(shift), ...ROUND.slice(0, shift)]) {
       const [h, a] = round % 2 ? [home, away] : [away, home];
       matches.push({ id: matches.length + 1, round, date, home: h, away: a, homeGoals: null, awayGoals: null });
     }
